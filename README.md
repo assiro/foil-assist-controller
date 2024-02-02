@@ -1,4 +1,4 @@
-# controller for electrical hydrofoil assist system
+# Controller for electrical hydrofoil assist system
 
 transmitter based on ESP8266 D1 Mini
 
