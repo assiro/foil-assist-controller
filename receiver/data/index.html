@@ -1,0 +1,198 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+	<link href="examples.css" rel="stylesheet" type="text/css"> 
+	
+	<title>TecnoFly</title>
+	  <div class="header">
+    <div class="container">
+	  <img src="tecnofly_logo.gif" alt="tecnofly" class="responsive">
+      <h2 class="page-title" align="center">Foil Assist Booster</h2>
+    </div>
+	
+  </div>
+	<style>
+	.center {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+  width: 20%;
+}
+
+	html {
+    font-family: Arial, Helvetica, sans-serif;
+    text-align: center;
+  }
+    h2 {
+      font-family: Arial;
+      font-size: 2.5rem;
+      text-align: center;
+    }
+	h5 {
+      font-family: Arial;
+      font-size: 1rem;
+      text-align: center;
+    }
+	.card {
+    background-color: #F8F7F9;;
+    box-shadow: 2px 2px 12px 1px rgba(140,140,140,.5);
+    padding-top:10px;
+    padding-bottom:20px;
+    }
+	.button {
+    padding: 15px 50px;
+    font-size: 24px;
+    text-align: center;
+    outline: none;
+    color: #fff;
+    background-color: #0f8b8d;
+    border: none;
+    border-radius: 5px;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: rgba(0,0,0,0);
+   }
+   .button:active {
+     background-color: #0f8b8d;
+     box-shadow: 2 2px #CDCDCD;
+     transform: translateY(2px);
+   }
+   .state {
+     font-size: 1.5rem;
+     color:#8c8c8c;
+     font-weight: bold;
+   }
+   .responsive {
+  width: 50%;
+  height: auto;
+}
+
+</style>
+
+<script type="text/javascript">	
+
+
+
+  var xhttp = new XMLHttpRequest();
+  xhttp.onreadystatechange = function() {
+		if (this.readyState == 4 && this.status == 200) {			  
+			version = parseFloat(this.responseText);
+			console.log(this.responseText);		
+			document.getElementById("version").innerHTML = this.responseText;
+		}	
+  };
+  xhttp.open("GET", "/ver", true);
+  xhttp.send();
+		
+  var xhttp = new XMLHttpRequest();
+  xhttp.onreadystatechange = function() {
+		if (this.readyState == 4 && this.status == 200) {			  
+			number = parseFloat(this.responseText)+1;
+			console.log(number);		
+			document.getElementById("number").innerHTML = number;
+		}	
+  };
+  xhttp.open("GET", "/fileNumber", true);
+  xhttp.send();	  
+
+
+
+</script>
+
+</head>
+<body>
+		<br>
+	<div id="header">
+		<h3>Vesc datalog acquisition rides - Last 10 rides</h3>
+		<br><br>
+		<h5>Last Log Ride number is: <b id="number"></h5>
+		<br><br>
+	</div>
+<!--
+	<div id="content">
+
+		<div class="demo-container">
+			<div id="placeholder" class="demo-placeholder" style="float:left; width:675px;"></div>
+			<p id="choices" style="float:right; width:135px;"></p>
+		</div>
+	</div>
+-->
+
+
+<div class="content">
+    <div class="card">
+<table class="center">
+
+  <tr>
+    	<td><p><a href="/vescDat0.txt"><button id="button" class="button">Ride 1</button></a></p></td>
+		<td><p><a href="/vescDat1.txt"><button id="button" class="button">Ride 2</button></a></p></td>
+		<td><p><a href="/vescDat2.txt"><button id="button" class="button">Ride 3</button></a></p></td>
+  </tr>
+  <tr>
+		<td><p><a href="/vescDat3.txt"><button id="button" class="button">Ride 4</button></a></p></td>
+		<td><p><a href="/vescDat4.txt"><button id="button" class="button">Ride 5</button></a></p></td>
+		<td><p><a href="/vescDat5.txt"><button id="button" class="button">Ride 6</button></a></p></td>
+  </tr>
+  <tr>
+		<td><p><a href="/vescDat6.txt"><button id="button" class="button">Ride 7</button></a></p></td>
+		<td><p><a href="/vescDat7.txt"><button id="button" class="button">Ride 8</button></a></p></td>
+		<td><p><a href="/vescDat8.txt"><button id="button" class="button">Ride 9</button></a></p></td>
+  </tr>
+
+  <tr>
+		<td></td>
+		<td><p><a href="/vescDat9.txt"><button id="button" class="button">Ride 10</button></a></p></td>
+		<td></td>
+  </tr>
+
+</table>
+      </div>
+</div>	 	  
+
+
+
+<!--
+<div class="content">
+    <div class="card">
+
+<form action="#">
+      <label for="lang">Choose file</label>
+      <select name="languages" id="lang">
+        <option value="0">File 1</option>
+        <option value="1">File 2</option>
+		<option value="2">File 3</option>
+		<option value="3">File 4</option>
+		<option value="4">File 5</option>
+		<option value="5">File 6</option>
+		<option value="6">File 7</option>
+		<option value="7">File 8</option>
+		<option value="8">File 9</option>
+		<option value="9">File 10</option>
+      </select>
+      <input class="button" type="submit" value="Select" />
+	  <p><a href="/vescDat0.txt"><button id="button" class="button">Go to File</button></a></p>
+</form>
+    </div>
+</div>
+
+<br><br>
+-->
+
+
+<div class="content">
+    <div class="card">
+	  <p><a href="/setup.html"><button id="button" class="button">Settings</button></a></p>
+    </div>
+</div>
+<br><br>
+  <h5>Written by R. Assiro - Firmware Ver. <b id="version"></h5>
+  <br>  
+  <hr>
+  <br>
+</body>
+</html>

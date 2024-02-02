@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<script src="plotly.js" charset="utf-8"></script>
+<body>
+<div id="myPlot" style="width:400%;max-width:800px"></div>
+
+
+
+<script>
+
+	var plot;
+	var scope = "ok";
+	var ch1 = true;
+	var ch2 = true;
+	var ch3 = true;
+	var ch4 = true;
+	var ch5 = true;
+	var ch6 = true;
+	var ch7 = true;
+	var ch8 = true;
+	var ch9 = true;
+	var ch10 = true;
+	
+	var datas = [];	
+	var peak = [];
+	var invert = false;
+
+
+	function getADCData() {		
+		
+		$.getJSON("data.json", function(response) {
+			console.log(response) 
+			datas = [];
+			peak = [];
+			$.each(response.datadc, function(key, val) {
+				datas.push(val);
+				
+			});	
+			
+			scope = "ok";
+			console.log("scope is ", scope)
+		});
+
+		var res = [
+			{datas: [], label:"Low ch1", lines:{show:true}},	
+			{datas: [], label:"High ch2", lines:{show:true}},               
+			{datas: [], label:"Low ch3", lines:{show:true}},	
+			{datas: [], label:"High ch4", lines:{show:true}},               
+			{datas: [], label:"Low ch5", lines:{show:true}},	
+			{datas: [], label:"High ch6", lines:{show:true}},
+			{datas: [], label:"Low ch7", lines:{show:true}},	
+			{datas: [], label:"Low ch8", lines:{show:true}},
+			{datas: [], label:"Low ch9", lines:{show:true}},	
+			{datas: [], label:"High ch10", lines:{show:true}},
+		];
+		if (!invert ){		
+			for (var i = 0; i < datas.length; ++i) {
+				if (ch1)res[0]['datas'].push([i, parseInt(datas[i]['adc0'])]);
+				if (ch2)res[1]['datas'].push([i, parseInt(datas[i]['adc1'])]);
+				if (ch3)res[2]['datas'].push([i, parseInt(datas[i]['adc2'])]);
+				if (ch4)res[3]['datas'].push([i, parseInt(datas[i]['adc3'])]);
+				if (ch5)res[4]['datas'].push([i, parseInt(datas[i]['adc4'])]);
+				if (ch6)res[5]['datas'].push([i, parseInt(datas[i]['adc5'])]);
+				if (ch7)res[6]['datas'].push([i, parseInt(datas[i]['adc6'])]);
+				if (ch8)res[7]['datas'].push([i, parseInt(datas[i]['adc7'])]);
+				if (ch9)res[8]['datas'].push([i, parseInt(datas[i]['adc8'])]);
+				if (ch10)res[9]['datas'].push([i, parseInt(datas[i]['adc9'])]);
+			}	
+			
+		} else {
+			
+			for (var i = 0; i < datas.length; ++i) {
+				if (ch1)res[0]['datas'].push([i, 4095-parseInt(datas[i]['adc0'])]);
+				if (ch2)res[1]['datas'].push([i, 4095-parseInt(datas[i]['adc1'])]);
+				if (ch3)res[2]['datas'].push([i, 4095-parseInt(datas[i]['adc2'])]);
+				if (ch4)res[3]['datas'].push([i, 4095-parseInt(datas[i]['adc3'])]);
+				if (ch5)res[4]['datas'].push([i, 4095-parseInt(datas[i]['adc4'])]);
+				if (ch6)res[5]['datas'].push([i, 4095-parseInt(datas[i]['adc5'])]);
+				if (ch7)res[6]['datas'].push([i, 4095-parseInt(datas[i]['adc6'])]);
+				if (ch8)res[7]['datas'].push([i, 4095-parseInt(datas[i]['adc7'])]);
+				if (ch9)res[8]['datas'].push([i, 4095-parseInt(datas[i]['adc8'])]);
+				if (ch10)res[9]['datas'].push([i, 4095-parseInt(datas[i]['adc9'])]);
+			}	
+		}			
+		
+		console.log(res);			
+		return res;			
+	}
+
+	
+	
+	console.log("ciao rob ")
+	
+	
+const xArray = [0,1,2,3,4,5,6,7,8,9,10];
+const yArray = [50,60,70,80,90,10,110,120,130,140,150];
+
+// Define Data
+const data = [{
+  x: xArray,
+  y: yArray,
+  mode:"lines"
+}];
+
+// Define Layout
+const layout = {
+  xaxis: {range: [0, 16], title: "Time in seconds"},
+  yaxis: {range: [0, 160], title: "Watt"},  
+  title: "Power consumpition"
+};
+
+// Display using Plotly
+Plotly.newPlot("myPlot", data, layout);
+
+
+</script>
+
+</body>
+</html>
