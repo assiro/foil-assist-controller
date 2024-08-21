@@ -1,7 +1,11 @@
-// Controller per gestione efoil con ESP8266
-// gestion vesc con lettura dei dati dell'efoil board
-// VERSIONE 24 Novembre 2023
-
+/*
+    TecnoFly cremote controller for Foil Assist system
+    2024 writed by Roberto Assiro
+    
+    This program is free software under the terms of the GNU General Public License 
+    as published by the Free Software Foundation.
+    VERSION 4.xx Aug 2024
+*/
 #include <ESP8266WiFi.h>
 #include <espnow.h>
 #include <SPI.h>
@@ -21,25 +25,26 @@
 #include <ESP8266WiFiMulti.h>
 #include <ESP8266HTTPClient.h>
 ESP8266WiFiMulti WiFiMulti;
-String VERSION = "4.12";
+String VERSION = "4.30";
 const char* ssid     = "tecnofly";
 const char* password = "tecnofly";
 String upgradeServer = "http://www.eoloonline.it/firmware/foilAssist/";
 String upgradeFile = "foilAssistController.bin";
-const int ESP_BUILTIN_LED = 2;
+//const int ESP_BUILTIN_LED = 2;
 const int VIBRATOR = D8;
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 128 // OLED display height, in pixels
 #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SH1107 display = Adafruit_SH1107(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET, 1000000, 100000);
-
 #define EEPROM_SIZE 16
 #define ss D4
-#define rst D0
-#define dio0 D3
+#define rst D3
+#define dio0 D0
 bool firstConnection = false;
 uint TXmode = 0; // trasmission mode ESPNOW = 0, Lora 1, BOTH = 2
 uint RXmode = 1; // receiver select
+uint THmode = 0; // Throttle mode
+uint displayMode; // display view mode
 bool espStatus = false;
 bool loraStatus = false;
 bool noLora = false;
@@ -47,8 +52,8 @@ byte localAddress;     // address of this device
 byte destination;      // destination to send to
 unsigned long lastTime;  
 unsigned long timerDelay = 100;  // send throttle to receiver
-unsigned long lastVibration;
-unsigned long vibrationTime = 500; 
+unsigned long vibrationTimeOff;
+unsigned long vibrationTime = 0; 
 unsigned long timerOff = 0; 
 unsigned long timerNoConnect = 0; 
 int hallPin = A0;
@@ -56,10 +61,8 @@ int hallValue;
 int throttle;
 int triggerValue;
 int counter;
-bool lowBatt50 = false;
-bool lowBatt30 = false;
 bool lowBatt = false;
-bool battery10s = false;
+bool lock = true;
 uint loraCounter;
 uint valMin = 0;
 uint valMax = 0;
@@ -86,7 +89,12 @@ struct vescValues data;
   uint powerAverage;
   uint powerIndex;
   float receiverVersion;
-
+  char message1[8];
+  char message2[8];
+  char message3[8];  
+  int Tminutes;
+  int Tseconds;
+  
 uint8_t broadcastAddress[] = {0x4C, 0x11, 0xAE, 0x0D, 0xE5, 0x35};// RECEIVER MAC Address
 uint8_t newMACAddress[] = {0xA4, 0xCF, 0x12, 0xDC, 0xB5, 0x8E};//TRANSMITTER MAC ADDRESS
 
@@ -104,6 +112,11 @@ typedef struct struct_message {
   uint powerAverage;
   uint powerIndex;
   float receiverVersion;
+  char message1[8];
+  char message2[8];
+  char message3[8];  
+  int Tminutes;
+  int Tseconds;   
 } struct_message;
 
 struct myData {
@@ -127,32 +140,35 @@ void OnDataSent(uint8_t *mac_addr, uint8_t sendStatus) {
 
 // data is received by ESP-NOW// Callback when data is received
 void OnDataRecv(uint8_t * mac_addr, uint8_t *incomingData, uint8_t len) {
-  memcpy(&incomingReadings, incomingData, sizeof(incomingReadings));
-  inpVoltage = incomingReadings.a;
-  tempMosfet = incomingReadings.tempMosfet;
-  avgInputCurrent = incomingReadings.avgInputCurrent;
-  watt = incomingReadings.watt;
-  batpercentage = incomingReadings.batt;
-  file = incomingReadings.file+1;
-  minutes = incomingReadings.minutes;
-  seconds = incomingReadings.seconds;
-  powerCounter = incomingReadings.powerCounter;
-  powerAverage = incomingReadings.powerAverage;
-  powerIndex = incomingReadings.powerIndex;
-  receiverVersion = incomingReadings.receiverVersion;
-  firstConnection = true;
-  if(inpVoltage > 35){battery10s = true;}
+      memcpy(&incomingReadings, incomingData, sizeof(incomingReadings));
+      inpVoltage = incomingReadings.a;
+      tempMosfet = incomingReadings.tempMosfet;
+      avgInputCurrent = incomingReadings.avgInputCurrent;
+      watt = incomingReadings.watt;
+      batpercentage = incomingReadings.batt;
+      file = incomingReadings.file+1;
+      minutes = incomingReadings.minutes;
+      seconds = incomingReadings.seconds;      
+      powerCounter = incomingReadings.powerCounter;
+      powerAverage = incomingReadings.powerAverage;
+      powerIndex = incomingReadings.powerIndex;
+      receiverVersion = incomingReadings.receiverVersion;
+      Tminutes = incomingReadings.Tminutes;
+      Tseconds = incomingReadings.Tseconds;      
+//Serial.println(incomingReadings.message1);
+//Serial.println(incomingReadings.message2);  
+      firstConnection = true;
 }
  
 void setup() {
       Serial.begin(115200);
       ESPhttpUpdate.setClientTimeout(8000);
       WiFi.mode(WIFI_STA);  // Set device as a Wi-Fi Station
-      pinMode(ESP_BUILTIN_LED, OUTPUT);
+//      pinMode(ESP_BUILTIN_LED, OUTPUT);
       pinMode(VIBRATOR, OUTPUT);
-      EEPROM.begin(16);
+      EEPROM.begin(32);
       EEPROM.get(12, RXmode);
-      if (RXmode > 5 or RXmode == 0){RXmode = 1;}
+      if (RXmode > 9 or RXmode == 0){RXmode = 1;}
       if (RXmode == 1){
             uint8_t Broadcast[] = {0x4C, 0x11, 0xAE, 0x0D, 0xE5, 0x35};
             memcpy(broadcastAddress, Broadcast, sizeof(broadcastAddress));
@@ -178,6 +194,26 @@ void setup() {
             memcpy(broadcastAddress, Broadcast, sizeof(broadcastAddress));
             uint8_t newMAC[] = {0xA4, 0xCF, 0x12, 0xDC, 0xB5, 0x05};
             memcpy(newMACAddress, newMAC, sizeof(broadcastAddress));
+      }else if (RXmode == 6){
+            uint8_t Broadcast[] = {0x4C, 0x11, 0xAE, 0x0D, 0xE5, 0x40};
+            memcpy(broadcastAddress, Broadcast, sizeof(broadcastAddress));
+            uint8_t newMAC[] = {0xA4, 0xCF, 0x12, 0xDC, 0xB5, 0x06};
+            memcpy(newMACAddress, newMAC, sizeof(broadcastAddress));
+      }else if (RXmode == 7){
+            uint8_t Broadcast[] = {0x4C, 0x11, 0xAE, 0x0D, 0xE5, 0x41};
+            memcpy(broadcastAddress, Broadcast, sizeof(broadcastAddress));
+            uint8_t newMAC[] = {0xA4, 0xCF, 0x12, 0xDC, 0xB5, 0x07};
+            memcpy(newMACAddress, newMAC, sizeof(broadcastAddress));
+      }else if (RXmode == 8){
+            uint8_t Broadcast[] = {0x4C, 0x11, 0xAE, 0x0D, 0xE5, 0x42};
+            memcpy(broadcastAddress, Broadcast, sizeof(broadcastAddress));
+            uint8_t newMAC[] = {0xA4, 0xCF, 0x12, 0xDC, 0xB5, 0x08};
+            memcpy(newMACAddress, newMAC, sizeof(broadcastAddress));
+      }else if (RXmode == 9){
+            uint8_t Broadcast[] = {0x4C, 0x11, 0xAE, 0x0D, 0xE5, 0x43};
+            memcpy(broadcastAddress, Broadcast, sizeof(broadcastAddress));
+            uint8_t newMAC[] = {0xA4, 0xCF, 0x12, 0xDC, 0xB5, 0x09};
+            memcpy(newMACAddress, newMAC, sizeof(broadcastAddress));
       }
       localAddress = newMACAddress[5];//0xBB;     // address of this device
       destination = broadcastAddress[5];//0xAA;      // destination to send to
@@ -202,8 +238,9 @@ void setup() {
       esp_now_add_peer(broadcastAddress, ESP_NOW_ROLE_COMBO, 0, NULL, 0);
 
 /////LORA SETUP
+//      LoRa.setSPIFrequency(1E6);
+      LoRa.setPins(ss, rst, dio0);
       while (!Serial);
-        LoRa.setPins(ss, rst, dio0);
         if (!LoRa.begin(433E6)) {
             Serial.println("Starting LoRa failed!");
             noLora = true;
@@ -211,8 +248,8 @@ void setup() {
         LoRa.setPreambleLength(6);
         LoRa.setTxPower(20, PA_OUTPUT_PA_BOOST_PIN);
         LoRa.setSpreadingFactor(8); // 8 max
+//LoRa.setSignalBandwidth(250E3);
 //        LoRa.setSignalBandwidth(62.5E3); // default 125E3 - 62.5E3 - 41.7E3 - 31.25E3
-//        LoRa.setGain(6); //between 0 and 6. If gain is 0, AGC will be enabled auto
 //        LoRa.onTxDone(onTxDone);  // attiva il callback
 //        LoRa.setCodingRate4(8);
         Serial.println("LoRa Starting Ok");
@@ -229,38 +266,41 @@ void loop() {
   if ((millis() - lastTime) > timerDelay) {
         loraCounter ++;
         hallValue = analogRead(hallPin);
-        throttle = map(hallValue, valMin, valMax, 0, 100); 
+        throttle = map(hallValue, valMin, valMax, 0, 100);
         if(throttle > 99 ){throttle = 99;}
-        if(throttle < 0 ){throttle = 0;}  
+        if(throttle < 0 ){throttle = 0;}
         if(throttle > 10) {
             timerOff = 0;
             timerNoConnect = 0;
+            if(firstConnection){lock = false;}
         }else{
             timerOff ++;
         }
-        show_display();
-
+         
+        if(THmode == 1) throttle = strong_throttle_curve(throttle);
+        else if(THmode == 2) throttle = mid_throttle_curve(throttle);
+        else if(THmode == 3) throttle = soft_throttle_curve(throttle);
+        else if(THmode == 4) throttle = angular_throttle_curve(throttle);
+        else if(THmode == 5) throttle = eco_throttle_curve(throttle);
+        
+        show_display();   
         if (TXmode == 0){// send by esp-now
             esp_now_send(broadcastAddress, (uint8_t *) &throttle, sizeof(throttle));// Send data via ESP-NOW
         }else if (TXmode == 1){        // send by LoRa
             String message = String(throttle);  // Send data by LoRa      
             sendMessage(message);
         }else if (TXmode == 2){ //send by both
-        //    if (loraCounter > 1){
+//            if (loraCounter > 1){
                   String message = String(throttle);  // Send throttle by LoRa      
                   sendMessage(message);
                   loraCounter = 0;
-        //    }           
+//            }           
             esp_now_send(broadcastAddress, (uint8_t *) &throttle, sizeof(throttle));// Send data via ESP-NOW
         } 
         display.display(); 
         lastTime = millis();
         counter ++; 
-  }
-  
-  if ((millis() - lastVibration) > vibrationTime) {
-        digitalWrite(VIBRATOR,0);
-        digitalWrite(ESP_BUILTIN_LED,0);
+        vibration();
   }
 
 }
@@ -277,13 +317,6 @@ void sendMessage(String outgoing) {
       LoRa.endPacket(true);   // true = async / non-blocking mode
 }
 
-
-void vibration(){
-      digitalWrite(VIBRATOR,1);
-      digitalWrite(ESP_BUILTIN_LED,1);
-      lastVibration = millis();
-}
-
 void starting(){
        // Display Text
       display.setTextSize(4);
@@ -293,24 +326,24 @@ void starting(){
       display.setCursor(30,35);
       display.println("Fly");
       display.setTextSize(2);      
-      display.setCursor(18,75);
+      display.setCursor(15,75);
       display.println("eBooster");
       display.setTextSize(1);
       display.setCursor(20,105);
       display.println("R. & L. Assiro");
-      display.setCursor(35,120);
+      display.setCursor(5,120);
       display.print("Ver. ");
       display.print(VERSION);
-      if(noLora == false) {display.println(" L");}
+      if(noLora == false) {display.println(" LoRa");}
       display.display();
       delay(2000);
-  for (int i = 0; i <= 7; i++) {
-      digitalWrite(ESP_BUILTIN_LED,0);
+  for (int i = 0; i <= 5; i++) {
+//      digitalWrite(ESP_BUILTIN_LED,0);
       digitalWrite(VIBRATOR,1);
       delay(200);          
-      digitalWrite(ESP_BUILTIN_LED,1);
+//      digitalWrite(ESP_BUILTIN_LED,1);
       digitalWrite(VIBRATOR,0);
-      delay(200); 
+      delay(200);          
   }    
 }
 
@@ -340,8 +373,6 @@ void OTAstart(){      //ARDUINO OTA
             }
             display.display();
             display.clearDisplay();
-
-
   });
   ArduinoOTA.onError([](ota_error_t error) {
     Serial.printf("Error[%u]: ", error);
@@ -422,7 +453,7 @@ void update_progress(int cur, int total) {
             display.setCursor(20,23);      
             display.println("Upgrade"); 
             display.setCursor(11,46);  
-            display.println("Available");                 
+            display.println(" Download");                 
             int download = map(cur, 0, total, 0, 100); 
 //            display.setTextSize(2);
 //            display.setCursor(20,0);
@@ -430,7 +461,7 @@ void update_progress(int cur, int total) {
             display.setCursor(20,25);
             display.drawRect(12, 100, 102,20, WHITE);
             display.setTextSize(3);
-            display.setCursor(35,70);
+            display.setCursor(40,70);
             display.print(download);
             display.print("%");
             for(int prog=0; prog<download;prog++){
