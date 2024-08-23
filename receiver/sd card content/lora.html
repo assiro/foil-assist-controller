@@ -1,0 +1,550 @@
+<!DOCTYPE HTML><html>
+<!-- ITK Pick and Place Gantry head -->
+
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  
+    <script src="highcharts.js"></script>  
+	<script src="highcharts-more.js"></script>  
+	<script src="jquery.js"></script>	
+	
+  <style>
+    body {
+      min-width: 310px;
+    	max-width: 1200px;
+    	height: 500px;
+      margin: 0 auto;
+    }
+	html {
+    font-family: Arial, Helvetica, sans-serif;
+    text-align: center;
+  }
+    h2 {
+      font-family: Arial;
+      font-size: 2.5rem;
+      text-align: center;
+    }
+	h5 {
+      font-family: Arial;
+      font-size: 1rem;
+      text-align: center;
+    }
+	.card {
+    background-color: #F8F7F9;;
+    box-shadow: 2px 2px 12px 1px rgba(140,140,140,.5);
+    padding-top:10px;
+    padding-bottom:20px;
+    }
+	.button {
+    padding: 15px 50px;
+    font-size: 24px;
+    text-align: center;
+    outline: none;
+    color: #fff;
+    background-color: #0f8b8d;
+    border: none;
+    border-radius: 5px;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: rgba(0,0,0,0);
+   }
+   .button:active {
+     background-color: #0f8b8d;
+     box-shadow: 2 2px #CDCDCD;
+     transform: translateY(2px);
+   }
+   .state {
+     font-size: 1.5rem;
+     color:#8c8c8c;
+     font-weight: bold;
+   }
+	.gauge-container {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		gap: 20px; /* Spazio tra i grafici */
+	}
+	.gauge {
+		width: 350px;
+		height: 350px;
+	}
+
+  </style>
+</head>
+<body>
+<title>TecnoFly</title>
+  <div class="header">
+<div class="container">
+	  <img src="tecnofly_logo.gif" alt="tecnofly" class="responsive">
+  <h2 class="page-title" align="center">Foil Assist LoRa Signal Monitor</h2>
+</div>
+ <h3>433Mhz</h3>
+    <div class="gauge-container">
+        <div id="container1" class="gauge"></div>
+        <div id="container2" class="gauge"></div>
+		<div id="container3" class="gauge"></div>
+    </div>
+  <br>	
+  <hr>
+  <br>
+<div class="card">
+	<div id="grafico" class="container"></div>
+	<div id="rssi" class="container"></div>
+</div>
+  <br>	 
+  <hr>
+  <br>  
+<div class="content">
+    <div class="card">
+	  <p><a href="/index.html"><button id="button" class="button">Back home</button></a></p>
+    </div>
+</div>
+<!--
+    <h1>JSON Data</h1>
+    <div id="data-container">
+        <p id="rssi"></p>
+        <p id="snr"></p>
+	
+    </div>
+-->
+</body>
+
+<br><br>
+<div class="content">
+	<div class="card">
+		<h4>Written by R. Assiro - Firmware Ver. <b id="version"></h5>
+	</div>
+</div>  
+  <br>  
+  <hr>
+  <br>
+
+</html>
+<script>
+var data = [];
+
+var xhttp = new XMLHttpRequest();
+xhttp.onreadystatechange = function() {
+	if (this.readyState == 4 && this.status == 200) {			  
+		version = parseFloat(this.responseText);
+		console.log(this.responseText);		
+		document.getElementById("version").innerHTML = this.responseText;
+	}	
+};
+xhttp.open("GET", "/ver", true);
+xhttp.send();
+		
+
+	 
+// strumento a indice rssi
+var chart1 = new Highcharts.chart('container1', {
+    chart: {
+        type: 'gauge',
+        plotBackgroundColor: null,
+        plotBackgroundImage: null,
+        plotBorderWidth: 0,
+        plotShadow: false
+    },
+    title: {
+        text: 'RSSI'
+    },
+
+    pane: {
+        startAngle: -130,
+        endAngle: 130,
+        background: [{
+            backgroundColor: {
+                linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+                stops: [
+                    [0, '#FFF'],
+                    [1, '#333']
+                ]
+            },
+            borderWidth: 0,
+            outerRadius: '112%'
+        }, {
+            backgroundColor: {
+                linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+                stops: [
+                    [0, '#333'],
+                    [1, '#FFF']
+                ]
+            },
+            borderWidth: 2,
+            outerRadius: '107%'
+        }, {
+            // default background
+        }, {
+            backgroundColor: '#DDD',
+            borderWidth: 0,
+            outerRadius: '105%',
+            innerRadius: '103%'
+        }]
+    },
+
+    // the value axis
+    yAxis: {
+        min: -100,
+        max: 0,
+
+        minorTickInterval: 'auto',
+        minorTickWidth: 1,
+        minorTickLength: 10,
+        minorTickPosition: 'inside',
+        minorTickColor: '#666',
+
+        tickPixelInterval: 25,
+        tickWidth: 2,
+        tickPosition: 'inside',
+        tickLength: 15,
+        tickColor: '#666',
+        labels: {
+            step: 2,
+            rotation: 'auto'
+        },
+        title: {
+            text: 'dBm'
+        },
+        plotBands: [{
+            from: -100,
+            to: -70,
+            color: '#DF5353' // red
+        }, {
+            from: -70,
+            to: 0,
+            color: '#55BF3B' // green
+        }]
+    },
+
+    series: [{
+        name: 'Rssi',
+        data: [0],
+        tooltip: {
+            valueSuffix: ' dBm'
+        }
+    }]
+
+});
+
+
+// strumento a indice snr
+var chart2 = new Highcharts.chart('container2', {
+    chart: {
+        type: 'gauge',
+        plotBackgroundColor: null,
+        plotBackgroundImage: null,
+        plotBorderWidth: 0,
+        plotShadow: false
+    },
+    title: {
+        text: 'SNR'
+    },
+
+    pane: {
+        startAngle: -130,
+        endAngle: 130,
+        background: [{
+            backgroundColor: {
+                linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+                stops: [
+                    [0, '#FFF'],
+                    [1, '#333']
+                ]
+            },
+            borderWidth: 0,
+            outerRadius: '112%'
+        }, {
+            backgroundColor: {
+                linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+                stops: [
+                    [0, '#333'],
+                    [1, '#FFF']
+                ]
+            },
+            borderWidth: 2,
+            outerRadius: '107%'
+        }, {
+            // default background
+        }, {
+            backgroundColor: '#DDD',
+            borderWidth: 0,
+            outerRadius: '105%',
+            innerRadius: '103%'
+        }]
+    },
+
+    // the value axis
+    yAxis: {
+        min: -15,
+        max: 15,
+        minorTickInterval: 'auto',
+        minorTickWidth: 1,
+        minorTickLength: 10,
+        minorTickPosition: 'inside',
+        minorTickColor: '#666',
+        tickPixelInterval: 25,
+        tickWidth: 2,
+        tickPosition: 'inside',
+        tickLength: 15,
+        tickColor: '#666',
+        labels: {
+            step: 2,
+            rotation: 'auto'
+        },
+        title: {
+            text: 'dB'
+        },
+        plotBands: [{
+            from: 0,
+            to: -15,
+            color: '#DF5353' // red
+        }, {
+            from: 0,
+            to: 15,
+            color: '#55BF3B' // green
+        }]
+    },
+
+    series: [{
+        name: 'SNR',
+        data: [1],
+        tooltip: {
+            valueSuffix: ' dB'
+        }
+    }]
+
+});
+
+// strumento a indice delay
+var chart3 = new Highcharts.chart('container3', {
+    chart: {
+        type: 'gauge',
+        plotBackgroundColor: null,
+        plotBackgroundImage: null,
+        plotBorderWidth: 0,
+        plotShadow: false
+    },
+    title: {
+        text: 'Delay'
+    },
+
+    pane: {
+        startAngle: -130,
+        endAngle: 130,
+        background: [{
+            backgroundColor: {
+                linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+                stops: [
+                    [0, '#FFF'],
+                    [1, '#333']
+                ]
+            },
+            borderWidth: 0,
+            outerRadius: '112%'
+        }, {
+            backgroundColor: {
+                linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+                stops: [
+                    [0, '#333'],
+                    [1, '#FFF']
+                ]
+            },
+            borderWidth: 2,
+            outerRadius: '107%'
+        }, {
+            // default background
+        }, {
+            backgroundColor: '#DDD',
+            borderWidth: 0,
+            outerRadius: '105%',
+            innerRadius: '103%'
+        }]
+    },
+
+    // the value axis
+    yAxis: {
+        min: 0,
+        max: 1500,
+        minorTickInterval: 'auto',
+        minorTickWidth: 1,
+        minorTickLength: 10,
+        minorTickPosition: 'inside',
+        minorTickColor: '#666',
+        tickPixelInterval: 25,
+        tickWidth: 2,
+        tickPosition: 'inside',
+        tickLength: 15,
+        tickColor: '#666',
+        labels: {
+            step: 2,
+            rotation: 'auto'
+        },
+        title: {
+            text: 'ms'
+        },
+        plotBands: [{
+            from: 350,
+            to: 1500,
+            color: '#DF5353' // red
+        }, {
+            from: 0,
+            to: 350,
+            color: '#55BF3B' // green
+        }]
+    },
+
+    series: [{
+        name: 'LoRa packet delay',
+        data: [1],
+        tooltip: {
+            valueSuffix: ' ms'
+        }
+    }]
+
+});
+
+
+
+// Configurazione del grafico
+    var chart = Highcharts.chart('grafico', {
+        chart: {
+            type: 'line'
+        },
+        title: { text: 'RSSI and SNR over Time' },
+
+        xAxis: {
+            type: 'datetime',
+            title: {
+                text: 'Time'
+            }
+        },
+        yAxis: [{
+            title: {
+                text: 'RSSI (dBm)'
+            },
+            min: -100,
+            max: 0
+        }, {
+            title: {
+                text: 'SNR (dB)'
+            },
+            opposite: true,
+            min: -15,
+            max: 15
+        }],
+        series: [{
+            name: 'RSSI',
+            data: [0],
+            yAxis: 0,
+            tooltip: {
+                valueSuffix: ' dBm'
+            }
+        }, {
+            name: 'SNR',
+            data: [1],
+            yAxis: 1,
+            tooltip: {
+                valueSuffix: ' dB'
+            }
+        }]
+    });
+
+	
+// grafico lora delay
+var chartRSSI = new Highcharts.Chart({
+  chart:{ renderTo : 'rssi' },
+  title: { text: 'LoRa Delay' },
+  series: [{
+    showInLegend: false,
+    data: []
+  }],
+  plotOptions: {
+    line: { animation: false,
+      dataLabels: { enabled: true }
+    },
+    series: { color: '#059e8a' }
+  },
+  xAxis: { type: 'datetime',
+    dateTimeLabelFormats: { second: '%H:%M:%S' }
+  },
+  
+	yAxis: [{
+		title: {
+			text: 'LoRa Delay (ms)'
+		},
+		min: 0,
+		max: 1000      
+	}],   
+ 
+  credits: { enabled: false }
+});
+
+	
+setInterval(function ( ) {			
+		const url = 'data';
+		$.getJSON(url, function(data){			
+//			console.log(data);		
+/*			document.getElementById("rssi").innerHTML = data.rssi;
+			document.getElementById("snr").innerHTML = data.snr;			
+			document.getElementById("voltage").innerHTML = data.voltage;
+			document.getElementById("current").innerHTML = data.current;
+			document.getElementById("minutes").innerHTML = data.minutes;
+			document.getElementById("seconds").innerHTML = data.seconds;			
+			document.getElementById("tempMosfet").innerHTML = data.tempMosfet;
+			document.getElementById("power").innerHTML = data.power;
+			document.getElementById("amphour").innerHTML = data.amphour;
+			document.getElementById("watthour").innerHTML = data.watthour;
+			document.getElementById("rpm").innerHTML = data.rpm;
+			document.getElementById("powerIndex").innerHTML = data.powerIndex;
+			document.getElementById("maxPower").innerHTML = data.maxPower.toFixed(0);
+			document.getElementById("minVoltage").innerHTML = data.minVoltage.toFixed(1);
+			document.getElementById("maxCurrent").innerHTML = data.maxCurrent.toFixed(1);
+			document.getElementById("maxTemp").innerHTML = data.maxTemp.toFixed(1);
+			document.getElementById("powerAverage").innerHTML = data.powerAverage;
+			document.getElementById("powerIndex").innerHTML = data.powerIndex;	
+					*/
+					
+			chart1.series[0].points[0].update(data.rssi);	
+			chart2.series[0].points[0].update(data.snr);	
+			chart3.series[0].points[0].update(data.lora);
+			
+			
+			 // Aggiungi punti ai dati del grafico
+			var time = (new Date()).getTime(); // Tempo corrente
+			
+//			chart.series[0].addPoint([time, data.rssi], true, false, true);
+	//		chart.series[1].addPoint([time, data.snr], true, false, true);
+	//		chart.series[2].addPoint([time, data.lora], true, true, true);
+
+			if(chart.series[0].data.length > 50) {
+					chart.series[0].addPoint([time, data.rssi], true, true, true);
+					chart.series[1].addPoint([time, data.snr], true, true, true);
+			//		chart.series[2].addPoint([time, data.lora], true, true, true);
+			} else {
+					chart.series[0].addPoint([time, data.rssi], true, false, true);
+					chart.series[1].addPoint([time, data.snr], true, false, true);
+			//		chart.series[2].addPoint([time, data.lora], true, false, true);
+			}
+			
+			
+			
+			
+//			chartRSSI.series[0].addPoint([time, data.lora], true, true, true);
+	//	console.log(data.lora);		
+		if(chartRSSI.series[0].data.length > 50) {
+					chartRSSI.series[0].addPoint([time, data.lora], true, true, true);
+				  } else {
+					chartRSSI.series[0].addPoint([time, data.lora], true, false, true);
+				  }
+
+		});
+
+}, 500 );
+
+
+</script>
+

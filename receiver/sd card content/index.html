@@ -1,0 +1,362 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+	<link href="assist.css" rel="stylesheet" type="text/css"> 
+	<script src="jquery.js"></script>
+	
+	<title>TecnoFly</title>
+<div class="header">
+    <div class="container">
+	  <img src="tecnofly_logo.gif" alt="tecnofly" class="responsive">
+      <h2 class="page-title" align="center">Foil Assist Booster</h2>
+    </div>
+	
+ </div>
+	<style>
+	.center {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+  width: 20%;
+}
+
+	html {
+    font-family: Arial, Helvetica, sans-serif;
+    text-align: center;
+  }
+    h2 {
+      font-family: Arial;
+      font-size: 2.5rem;
+      text-align: center;
+    }
+	h5 {
+      font-family: Arial;
+      font-size: 1rem;
+      text-align: center;
+    }
+	.card {
+    background-color: #F8F7F9;;
+    box-shadow: 2px 2px 12px 1px rgba(140,140,140,.5);
+    padding-top:10px;
+    padding-bottom:20px;
+    }
+	.button {
+    padding: 15px 50px;
+    font-size: 24px;
+    text-align: center;
+    outline: none;
+    color: #fff;
+    background-color: #0f8b8d;
+    border: none;
+    border-radius: 5px;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: rgba(0,0,0,0);
+   }
+   .button:active {
+     background-color: #0f8b8d;
+     box-shadow: 2 2px #CDCDCD;
+     transform: translateY(2px);
+   }
+   .state {
+     font-size: 1.5rem;
+     color:#8c8c8c;
+     font-weight: bold;
+   }
+   .responsive {
+  width: 50%;
+  height: auto;
+}
+
+</style>
+
+<script type="text/javascript">	
+	$(document).ready(function(){ 
+		$.getJSON('ride?number=0', function(data){		
+			console.log(data);
+			document.getElementById("minutes1").innerHTML = data.minutes;
+			document.getElementById("seconds1").innerHTML = data.seconds;
+			document.getElementById("maxPower1").innerHTML = data.maxPower.toFixed(0);
+			document.getElementById("minVoltage1").innerHTML = data.minVoltage.toFixed(1);
+			document.getElementById("maxCurrent1").innerHTML = data.maxCurrent.toFixed(1);
+			document.getElementById("maxTemp1").innerHTML = data.maxTemp.toFixed(1);
+			document.getElementById("powerAverage1").innerHTML = data.powerAverage;
+			document.getElementById("powerIndex1").innerHTML = data.powerIndex;
+			
+		});
+	});
+
+	$(document).ready(function(){ 
+		$.getJSON('ride?number=1', function(data){			
+			document.getElementById("minutes2").innerHTML = data.minutes;
+			document.getElementById("seconds2").innerHTML = data.seconds;
+			document.getElementById("maxPower2").innerHTML = data.maxPower.toFixed(0);
+			document.getElementById("minVoltage2").innerHTML = data.minVoltage.toFixed(1);
+			document.getElementById("maxCurrent2").innerHTML = data.maxCurrent.toFixed(1);
+			document.getElementById("maxTemp2").innerHTML = data.maxTemp.toFixed(1);
+			document.getElementById("powerAverage2").innerHTML = data.powerAverage;
+			document.getElementById("powerIndex2").innerHTML = data.powerIndex;
+			
+		});
+	});
+
+	$(document).ready(function(){ 
+		$.getJSON('ride?number=2', function(data){			
+			document.getElementById("minutes3").innerHTML = data.minutes;
+			document.getElementById("seconds3").innerHTML = data.seconds;
+			document.getElementById("maxPower3").innerHTML = data.maxPower.toFixed(0);
+			document.getElementById("minVoltage3").innerHTML = data.minVoltage.toFixed(1);
+			document.getElementById("maxCurrent3").innerHTML = data.maxCurrent.toFixed(1);
+			document.getElementById("maxTemp3").innerHTML = data.maxTemp.toFixed(1);
+			document.getElementById("powerAverage3").innerHTML = data.powerAverage;
+			document.getElementById("powerIndex3").innerHTML = data.powerIndex;
+			
+		});
+	});
+	
+	$(document).ready(function(){ 
+		$.getJSON('ride?number=3', function(data){			
+			document.getElementById("minutes4").innerHTML = data.minutes;
+			document.getElementById("seconds4").innerHTML = data.seconds;
+			document.getElementById("maxPower4").innerHTML = data.maxPower.toFixed(0);
+			document.getElementById("minVoltage4").innerHTML = data.minVoltage.toFixed(1);
+			document.getElementById("maxCurrent4").innerHTML = data.maxCurrent.toFixed(1);
+			document.getElementById("maxTemp4").innerHTML = data.maxTemp.toFixed(1);
+			document.getElementById("powerAverage4").innerHTML = data.powerAverage;
+			document.getElementById("powerIndex4").innerHTML = data.powerIndex;
+			
+		});
+	});
+	
+	$(document).ready(function(){ 
+		$.getJSON('ride?number=4', function(data){			
+			document.getElementById("minutes5").innerHTML = data.minutes;
+			document.getElementById("seconds5").innerHTML = data.seconds;
+			document.getElementById("maxPower5").innerHTML = data.maxPower.toFixed(0);
+			document.getElementById("minVoltage5").innerHTML = data.minVoltage.toFixed(1);
+			document.getElementById("maxCurrent5").innerHTML = data.maxCurrent.toFixed(1);
+			document.getElementById("maxTemp5").innerHTML = data.maxTemp.toFixed(1);
+			document.getElementById("powerAverage5").innerHTML = data.powerAverage;
+			document.getElementById("powerIndex5").innerHTML = data.powerIndex;
+			
+		});
+	});
+	
+	$(document).ready(function(){ 
+		$.getJSON('ride?number=5', function(data){			
+			document.getElementById("minutes6").innerHTML = data.minutes;
+			document.getElementById("seconds6").innerHTML = data.seconds;
+			document.getElementById("maxPower6").innerHTML = data.maxPower.toFixed(0);
+			document.getElementById("minVoltage6").innerHTML = data.minVoltage.toFixed(1);
+			document.getElementById("maxCurrent6").innerHTML = data.maxCurrent.toFixed(1);
+			document.getElementById("maxTemp6").innerHTML = data.maxTemp.toFixed(1);
+			document.getElementById("powerAverage6").innerHTML = data.powerAverage;
+			document.getElementById("powerIndex6").innerHTML = data.powerIndex;
+			
+		});
+	});
+	
+	$(document).ready(function(){ 
+		$.getJSON('ride?number=6', function(data){			
+			document.getElementById("minutes7").innerHTML = data.minutes;
+			document.getElementById("seconds7").innerHTML = data.seconds;
+			document.getElementById("maxPower7").innerHTML = data.maxPower.toFixed(0);
+			document.getElementById("minVoltage7").innerHTML = data.minVoltage.toFixed(1);
+			document.getElementById("maxCurrent7").innerHTML = data.maxCurrent.toFixed(1);
+			document.getElementById("maxTemp7").innerHTML = data.maxTemp.toFixed(1);
+			document.getElementById("powerAverage7").innerHTML = data.powerAverage;
+			document.getElementById("powerIndex7").innerHTML = data.powerIndex;
+			
+		});
+	});
+
+	
+	$(document).ready(function(){ 
+		$.getJSON('ride?number=7', function(data){			
+			document.getElementById("minutes8").innerHTML = data.minutes;
+			document.getElementById("seconds8").innerHTML = data.seconds;
+			document.getElementById("maxPower8").innerHTML = data.maxPower.toFixed(0);
+			document.getElementById("minVoltage8").innerHTML = data.minVoltage.toFixed(1);
+			document.getElementById("maxCurrent8").innerHTML = data.maxCurrent.toFixed(1);
+			document.getElementById("maxTemp8").innerHTML = data.maxTemp.toFixed(1);
+			document.getElementById("powerAverage8").innerHTML = data.powerAverage;
+			document.getElementById("powerIndex8").innerHTML = data.powerIndex;
+			
+		});
+	});
+
+	
+	$(document).ready(function(){ 
+		$.getJSON('ride?number=8', function(data){			
+			document.getElementById("minutes9").innerHTML = data.minutes;
+			document.getElementById("seconds9").innerHTML = data.seconds;
+			document.getElementById("maxPower9").innerHTML = data.maxPower.toFixed(0);
+			document.getElementById("minVoltage9").innerHTML = data.minVoltage.toFixed(1);
+			document.getElementById("maxCurrent9").innerHTML = data.maxCurrent.toFixed(1);
+			document.getElementById("maxTemp9").innerHTML = data.maxTemp.toFixed(1);
+			document.getElementById("powerAverage9").innerHTML = data.powerAverage;
+			document.getElementById("powerIndex9").innerHTML = data.powerIndex;
+			
+		});
+	});
+
+	
+	$(document).ready(function(){ 
+		$.getJSON('ride?number=9', function(data){			
+			document.getElementById("minutes10").innerHTML = data.minutes;
+			document.getElementById("seconds10").innerHTML = data.seconds;
+			document.getElementById("maxPower10").innerHTML = data.maxPower.toFixed(0);
+			document.getElementById("minVoltage10").innerHTML = data.minVoltage.toFixed(1);
+			document.getElementById("maxCurrent10").innerHTML = data.maxCurrent.toFixed(1);
+			document.getElementById("maxTemp10").innerHTML = data.maxTemp.toFixed(1);
+			document.getElementById("powerAverage10").innerHTML = data.powerAverage;
+			document.getElementById("powerIndex10").innerHTML = data.powerIndex;
+			
+		});
+	});	
+	  var xhttp = new XMLHttpRequest();
+	  xhttp.onreadystatechange = function() {
+			if (this.readyState == 4 && this.status == 200) {			  
+				version = parseFloat(this.responseText);
+				console.log(this.responseText);		
+				document.getElementById("version").innerHTML = this.responseText;
+			}	
+	  };
+	  xhttp.open("GET", "/ver", true);
+	  xhttp.send();
+			
+	  var xhttp = new XMLHttpRequest();
+	  xhttp.onreadystatechange = function() {
+			if (this.readyState == 4 && this.status == 200) {			  
+				number = parseFloat(this.responseText)+1;
+				console.log(number);		
+				document.getElementById("number").innerHTML = number;
+			}	
+	  };
+	  xhttp.open("GET", "/fileNumber", true);
+	  xhttp.send();	  
+
+</script>
+
+</head>
+<body>
+		<br>
+	<div id="header">
+		<h3>Vesc datalog acquisition rides - Last 10 rides</h3>
+		<br>
+		<h5>Last Log Ride number is: <b id="number"></h5>
+	</div>
+	
+<hr>
+	<div id="content">
+		<h5> Ride Time: <b id="minutes1"></b>:<b id="seconds1"></b> - Max Power: <b id="maxPower1"></b>W - Min Voltage: <b id="minVoltage1"></b>V - Max Current:  <b id="maxCurrent1"></b>A</h5>
+		<h5> Max Temperature:  <b id="maxTemp1"></b>°C - Power Average: <b id="powerAverage1"></b>W - Power Index: <b id="powerIndex1"></b></h5>
+		<p><a href="ride.html?ride=0"><button id="button" class="button">Ride Log 1</button></a></p>
+	</div>
+<hr>
+	<div id="content">
+		<h5> Ride Time: <b id="minutes2"></b>:<b id="seconds2"></b> - Max Power: <b id="maxPower2"></b>W - Min Voltage: <b id="minVoltage2"></b>V - Max Current:  <b id="maxCurrent2"></b>A</h5>
+		<h5> Max Temperature:  <b id="maxTemp2"></b>°C - Power Average: <b id="powerAverage2"></b>W - Power Index: <b id="powerIndex2"></b></h5>
+		<p><a href="ride.html?ride=1"><button id="button" class="button">Ride Log 2</button></a></p>
+	</div>
+<hr>
+	<div id="content">
+		<h5> Ride Time: <b id="minutes3"></b>:<b id="seconds3"></b> - Max Power: <b id="maxPower3"></b>W - Min Voltage: <b id="minVoltage3"></b>V - Max Current:  <b id="maxCurrent3"></b>A</h5>
+		<h5> Max Temperature:  <b id="maxTemp3"></b>°C - Power Average: <b id="powerAverage3"></b>W - Power Index: <b id="powerIndex3"></b></h5>
+		<p><a href="ride.html?ride=2"><button id="button" class="button">Ride Log 3</button></a></p>
+	</div>
+<hr>
+	<div id="content">
+		<h5> Ride Time: <b id="minutes4"></b>:<b id="seconds4"></b> - Max Power: <b id="maxPower4"></b>W - Min Voltage: <b id="minVoltage4"></b>V - Max Current:  <b id="maxCurrent4"></b>A</h5>
+		<h5> Max Temperature:  <b id="maxTemp4"></b>°C - Power Average: <b id="powerAverage4"></b>W - Power Index: <b id="powerIndex4"></b></h5>
+		<p><a href="ride.html?ride=3"><button id="button" class="button">Ride Log 4</button></a></p>
+	</div>
+<hr>
+	<div id="content">
+		<h5> Ride Time: <b id="minutes5"></b>:<b id="seconds5"></b> - Max Power: <b id="maxPower5"></b>W - Min Voltage: <b id="minVoltage5"></b>V - Max Current:  <b id="maxCurrent5"></b>A</h5>
+		<h5> Max Temperature:  <b id="maxTemp5"></b>°C - Power Average: <b id="powerAverage5"></b>W - Power Index: <b id="powerIndex5"></b></h5>
+		<p><a href="ride.html?ride=4"><button id="button" class="button">Ride Log 5</button></a></p>
+	</div>
+<hr>
+	<div id="content">
+		<h5> Ride Time: <b id="minutes6"></b>:<b id="seconds6"></b> - Max Power: <b id="maxPower6"></b>W - Min Voltage: <b id="minVoltage6"></b>V - Max Current:  <b id="maxCurrent6"></b>A</h5>
+		<h5> Max Temperature:  <b id="maxTemp6"></b>°C - Power Average: <b id="powerAverage6"></b>W - Power Index: <b id="powerIndex6"></b></h5>
+		<p><a href="ride.html?ride=5"><button id="button" class="button">Ride Log 6</button></a></p>
+	</div>
+<hr> 	  
+	<div id="content">
+		<h5> Ride Time: <b id="minutes7"></b>:<b id="seconds7"></b> - Max Power: <b id="maxPower7"></b>W - Min Voltage: <b id="minVoltage7"></b>V - Max Current:  <b id="maxCurrent7"></b>A</h5>
+		<h5> Max Temperature:  <b id="maxTemp7"></b>°C - Power Average: <b id="powerAverage7"></b>W - Power Index: <b id="powerIndex7"></b></h5>
+		<p><a href="ride.html?ride=6"><button id="button" class="button">Ride Log 7</button></a></p>
+	</div>
+<hr>
+	<div id="content">
+		<h5> Ride Time: <b id="minutes8"></b>:<b id="seconds8"></b> - Max Power: <b id="maxPower8"></b>W - Min Voltage: <b id="minVoltage8"></b>V - Max Current:  <b id="maxCurrent8"></b>A</h5>
+		<h5> Max Temperature:  <b id="maxTemp8"></b>°C - Power Average: <b id="powerAverage8"></b>W - Power Index: <b id="powerIndex8"></b></h5>
+		<p><a href="ride.html?ride=7"><button id="button" class="button">Ride Log 8</button></a></p>
+	</div>
+<hr>
+	<div id="content">
+		<h5> Ride Time: <b id="minutes9"></b>:<b id="seconds9"></b> - Max Power: <b id="maxPower9"></b>W - Min Voltage: <b id="minVoltage9"></b>V - Max Current:  <b id="maxCurrent9"></b>A</h5>
+		<h5> Max Temperature:  <b id="maxTemp9"></b>°C - Power Average: <b id="powerAverage9"></b>W - Power Index: <b id="powerIndex9"></b></h5>
+		<p><a href="ride.html?ride=8"><button id="button" class="button">Ride Log 9</button></a></p>
+	</div>
+<hr>
+	<div id="content">
+		<h5> Ride Time: <b id="minutes10"></b>:<b id="seconds10"></b> - Max Power: <b id="maxPower10"></b>W - Min Voltage: <b id="minVoltage10"></b>V - Max Current:  <b id="maxCurrent10"></b>A</h5>
+		<h5> Max Temperature:  <b id="maxTemp10"></b>°C - Power Average: <b id="powerAverage10"></b>W - Power Index: <b id="powerIndex10"></b></h5>
+		<p><a href="ride.html?ride=9"><button id="button" class="button">Ride Log 10</button></a></p>
+	</div>
+<hr>
+<!--
+<div class="content">
+    <div class="card">
+
+<form action="#">
+      <label for="lang">Choose file</label>
+      <select name="languages" id="lang">
+        <option value="0">File 1</option>
+        <option value="1">File 2</option>
+		<option value="2">File 3</option>
+		<option value="3">File 4</option>
+		<option value="4">File 5</option>
+		<option value="5">File 6</option>
+		<option value="6">File 7</option>
+		<option value="7">File 8</option>
+		<option value="8">File 9</option>
+		<option value="9">File 10</option>
+      </select>
+      <input class="button" type="submit" value="Select" />
+	  <p><a href="/vescDat0.txt"><button id="button" class="button">Go to File</button></a></p>
+</form>
+    </div>
+</div>
+
+<br><br>
+-->
+
+
+<div class="content">
+    <div class="card">
+	  <p><a href="setup.html"><button id="button" class="button">Settings</button></a></p>
+    </div>
+	<div class="card">
+	  <p><a href="test.html"><button id="button" class="button">VESC monitor</button></a></p>
+    </div>
+		<div class="card">
+	  <p><a href="lora.html"><button id="button" class="button">LoRa monitor</button></a></p>
+    </div>
+</div>
+<br><br>
+  <h5>Written by R. Assiro - Firmware Ver. <b id="version"></h5>
+  <br>  
+  <hr>
+  <br>
+</body>
+</html>
+

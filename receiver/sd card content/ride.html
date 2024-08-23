@@ -1,0 +1,153 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+	<link href="assist.css" rel="stylesheet" type="text/css"> 
+	<script src="jquery.js"></script>
+	<script src="plotly.js" charset="utf-8"></script>	
+	<title>TecnoFly</title>	 
+	<style>
+	.center {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+  width: 20%;
+}
+
+	html {
+    font-family: Arial, Helvetica, sans-serif;
+    text-align: center;
+  }
+    h2 {
+      font-family: Arial;
+      font-size: 2.5rem;
+      text-align: center;
+    }
+	h5 {
+      font-family: Arial;
+      font-size: 1rem;
+      text-align: center;
+    }
+	.card {
+    background-color: #F8F7F9;;
+    box-shadow: 2px 2px 12px 1px rgba(140,140,140,.5);
+    padding-top:10px;
+    padding-bottom:20px;
+    }
+	.button {
+    padding: 15px 50px;
+    font-size: 24px;
+    text-align: center;
+    outline: none;
+    color: #fff;
+    background-color: #0f8b8d;
+    border: none;
+    border-radius: 5px;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: rgba(0,0,0,0);
+   }
+   .button:active {
+     background-color: #0f8b8d;
+     box-shadow: 2 2px #CDCDCD;
+     transform: translateY(2px);
+   }
+   .state {
+     font-size: 1.5rem;
+     color:#8c8c8c;
+     font-weight: bold;
+   }
+   .responsive {
+  width: 50%;
+  height: auto;
+}
+
+</style>
+</head>
+<body>
+
+<div class="header">
+			<div class="container">
+				<img src="tecnofly_logo.gif" alt="tecnofly" class="responsive">
+				<h2 class="page-title" align="center">Foil Assist Ride: <b id="rideNumber"></h2>
+			</div>
+	
+</div>
+<hr>
+<div id="content">
+	<h5> Ride Time: <b id="minutes"></b>:<b id="seconds"></b> - Max Power: <b id="maxPower"></b>W - Min Voltage: <b id="minVoltage"></b>V - Max Current:  <b id="maxCurrent"></b>A</h5>
+	<h5> Max Temperature:  <b id="maxTemp"></b>°C - Power Average: <b id="powerAverage"></b>W - Power Index: <b id="powerIndex"></b></h5>
+
+</div>
+<hr>
+<!--
+<div id="content">  
+<div id="myPlot" style="width:400%;max-width:800px"></div>
+   <br>  
+  <hr>
+</div>
+-->
+<div class="content">
+	<div class="card">  
+		<p align="center" color="#FF0000" ><font size="5" >Logfile RIDE LOG <b id="rideNumber"><br></p>
+		<font size="5" ><textarea id="container" rows="100" cols="120"></textarea>
+	</div>
+</div> 
+
+<div class="content">
+	<div class="card">
+		<h4>Written by R. Assiro - Firmware Ver. <b id="version"></h5>
+	</div>
+</div>  
+  <br>  
+  <hr>
+  <br>
+</body>
+</html>
+<script type="text/javascript">	
+
+	// read parameter from the link
+    let parametro = new URLSearchParams(window.location.search);
+	let numero = parametro.get("ride");
+	var numeroRide = parseInt(numero) + 1;
+	console.log(numeroRide);
+	document.getElementById("rideNumber").innerHTML = numeroRide;
+
+	$(document).ready(function(){ 
+		$.getJSON('ride?number=' + numero, function(data){	
+			console.log(data);	
+			document.getElementById("minutes").innerHTML = data.minutes;
+			document.getElementById("seconds").innerHTML = data.seconds;
+			document.getElementById("maxPower").innerHTML = data.maxPower.toFixed(0);
+			document.getElementById("minVoltage").innerHTML = data.minVoltage.toFixed(1);
+			document.getElementById("maxCurrent").innerHTML = data.maxCurrent.toFixed(1);
+			document.getElementById("maxTemp").innerHTML = data.maxTemp.toFixed(1);
+			document.getElementById("powerAverage").innerHTML = data.powerAverage;
+			document.getElementById("powerIndex").innerHTML = data.powerIndex;			
+		});
+	});
+
+$(document).ready(function(){
+        $('#container').load("vesc?number=" + numero );
+});
+
+
+  var xhttp = new XMLHttpRequest();
+  xhttp.onreadystatechange = function() {
+		if (this.readyState == 4 && this.status == 200) {			  
+			version = parseFloat(this.responseText);
+			console.log(this.responseText);		
+			document.getElementById("version").innerHTML = this.responseText;
+		}	
+  };
+  xhttp.open("GET", "/ver", true);
+  xhttp.send();
+  
+
+</script>
+
+

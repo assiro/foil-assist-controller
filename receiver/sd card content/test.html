@@ -1,0 +1,571 @@
+<!DOCTYPE HTML><html>
+
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="highcharts.js"></script>  
+	<script src="highcharts-more.js"></script>  
+	<script src="jquery.js"></script>	
+	
+  <style>
+    body {
+      min-width: 310px;
+    	max-width: 1200px;
+    	height: 500px;
+      margin: 0 auto;
+    }
+	html {
+    font-family: Arial, Helvetica, sans-serif;
+    text-align: center;
+  }
+    h2 {
+      font-family: Arial;
+      font-size: 2.5rem;
+      text-align: center;
+    }
+	h5 {
+      font-family: Arial;
+      font-size: 1rem;
+      text-align: center;
+    }
+	.card {
+    background-color: #F8F7F9;;
+    box-shadow: 2px 2px 12px 1px rgba(140,140,140,.5);
+    padding-top:10px;
+    padding-bottom:20px;
+    }
+	.button {
+    padding: 15px 50px;
+    font-size: 24px;
+    text-align: center;
+    outline: none;
+    color: #fff;
+    background-color: #0f8b8d;
+    border: none;
+    border-radius: 5px;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: rgba(0,0,0,0);
+   }
+   .button:active {
+     background-color: #0f8b8d;
+     box-shadow: 2 2px #CDCDCD;
+     transform: translateY(2px);
+   }
+    .state {
+     font-size: 1.5rem;
+     color:#8c8c8c;
+     font-weight: bold;
+   }
+	.gauge-container {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		gap: 20px; /* Spazio tra i grafici */
+	}
+	.gauge {
+		width: 350px;
+		height: 350px;
+	}
+  </style>
+</head>
+<body>
+
+<title>TecnoFly</title>
+  <div class="header">
+<div class="container">
+
+  <h2 class="page-title" align="center">Foil Assist VESC Monitor</h2>
+</div>
+
+<div class="gauge-container">
+	<div id="container1" class="gauge"></div>
+	<div id="container2" class="gauge"></div>
+	<div id="container3" class="gauge"></div>
+</div>
+
+ 
+<br><br>
+<div class="content">
+	<div class="card">
+		<h5>VESC battery voltage OFFSET Volts: <b id="offsetValue"></h5>
+		<div class="form-group">              
+					  <div class="col-xs-1">
+							<select id="offset" class="form-control">
+								<option value="0">0</option>
+								<option value="10">100mV</option>
+								<option value="15">150mV</option>
+								<option value="20">200mV</option>
+								<option value="25">250mV</option>   
+								<option value="30">300mV</option>
+								<option value="35">350mV</option> 
+								<option value="40">400mV</option>
+								<option value="45">450mV</option>
+								<option value="50">500mV</option>   
+								<option value="55">550mV</option>	
+								<option value="60">600mV</option>
+								<option value="65">650mV</option>
+								<option value="70">700mV</option>   
+								<option value="75">750mV</option>
+								<option value="80">800mV</option> 
+								<option value="85">850mV</option>
+								<option value="90">900mV</option>
+								<option value="95">950mV</option>   
+								<option value="100">1V</option>	
+								<option value="110">-100mV</option>
+								<option value="115">-150mV</option>
+								<option value="120">-200mV</option>
+								<option value="125">-250mV</option>   
+								<option value="130">-300mV</option>
+								<option value="135">-350mV</option> 
+								<option value="140">-400mV</option>
+								<option value="145">-450mV</option>
+								<option value="150">-500mV</option>   
+								<option value="155">-550mV</option>	
+								<option value="160">-600mV</option>
+								<option value="165">-650mV</option>
+								<option value="170">-700mV</option>   
+								<option value="175">-750mV</option>
+								<option value="180">-800mV</option> 
+								<option value="185">-850mV</option>
+								<option value="190">-900mV</option>
+								<option value="195">-950mV</option>   
+								<option value="1100">-1V</option>	
+							</select>
+					  </div>
+				</div>		
+	</div>
+</div>  
+  <br> 
+<div class="card">
+  <div id="chart-volts" class="container"></div>
+  <div id="chart-watt" class="container"></div>
+  <div id="chart-temp" class="container"></div>
+</div>
+
+</body>
+
+<br><br>
+<div class="content">
+	<div class="card">
+		<h4>Written by R. Assiro - Firmware Ver. <b id="version"></h5>
+	</div>
+</div>  
+  <br>  
+  <hr>
+  <br>
+
+</html>
+<script>
+var data = [];
+$(function() {				
+		$("#offset").on('change', function(e) {
+					e.preventDefault();			
+					var geturl = "/offset?number=" + $("#offset").val()
+					$.get(geturl, function (data) {
+					console.log("sent new offset: ") + $("#offset").val();
+					});
+					window.alert("VESC voltage offset changed");
+		});	
+/*
+		$("#delete").on('click', function(e) {
+					e.preventDefault();			
+					var geturl = "/delete"
+					$.get(geturl, function (data) {
+					console.log("Delete log files");
+					});
+					window.alert("LOG Files deleted");
+		});	
+*/
+});
+
+var xhttp = new XMLHttpRequest();
+xhttp.onreadystatechange = function() {
+	if (this.readyState == 4 && this.status == 200) {			  
+		version = parseFloat(this.responseText);
+		console.log(this.responseText);		
+		document.getElementById("version").innerHTML = this.responseText;
+	}	
+};
+xhttp.open("GET", "/ver", true);
+xhttp.send();
+		
+		
+var xhttp = new XMLHttpRequest();
+xhttp.onreadystatechange = function() {
+	if (this.readyState == 4 && this.status == 200) {			  
+		console.log(this.responseText);		
+		document.getElementById("offsetValue").innerHTML = this.responseText;
+	}	
+};
+xhttp.open("GET", "/read_offset", true);
+xhttp.send();
+
+	 
+// strumento a indice
+var chart1 = new Highcharts.chart('container1', {
+    chart: {
+        type: 'gauge',
+        plotBackgroundColor: null,
+        plotBackgroundImage: null,
+        plotBorderWidth: 0,
+        plotShadow: false
+    },
+    title: {
+        text: 'Battery voltage'
+    },
+
+    pane: {
+        startAngle: -130,
+        endAngle: 130,
+        background: [{
+            backgroundColor: {
+                linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+                stops: [
+                    [0, '#FFF'],
+                    [1, '#333']
+                ]
+            },
+            borderWidth: 0,
+            outerRadius: '112%'
+        }, {
+            backgroundColor: {
+                linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+                stops: [
+                    [0, '#333'],
+                    [1, '#FFF']
+                ]
+            },
+            borderWidth: 2,
+            outerRadius: '107%'
+        }, {
+            // default background
+        }, {
+            backgroundColor: '#DDD',
+            borderWidth: 0,
+            outerRadius: '105%',
+            innerRadius: '103%'
+        }]
+    },
+
+    // the value axis
+    yAxis: {
+        min: 0,
+        max: 45,
+
+        minorTickInterval: 'auto',
+        minorTickWidth: 1,
+        minorTickLength: 10,
+        minorTickPosition: 'inside',
+        minorTickColor: '#666',
+
+        tickPixelInterval: 25,
+        tickWidth: 2,
+        tickPosition: 'inside',
+        tickLength: 15,
+        tickColor: '#666',
+        labels: {
+            step: 2,
+            rotation: 'auto'
+        },
+        title: {
+            text: 'Volts'
+        },
+        plotBands: [{
+            from: 0,
+            to: 32,
+            color: '#DF5353' // red
+        }, {
+            from: 32,
+            to: 42,
+            color: '#55BF3B' // green
+        }]
+    },
+
+    series: [{
+        name: 'Volts',
+        data: [0],
+        tooltip: {
+            valueSuffix: ' Volts'
+        }
+    }]
+
+});
+
+// strumento a indice
+var chart2 = new Highcharts.chart('container2', {
+    chart: {
+        type: 'gauge',
+        plotBackgroundColor: null,
+        plotBackgroundImage: null,
+        plotBorderWidth: 0,
+        plotShadow: false
+    },
+    title: {
+        text: 'Power'
+    },
+
+    pane: {
+        startAngle: -130,
+        endAngle: 130,
+        background: [{
+            backgroundColor: {
+                linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+                stops: [
+                    [0, '#FFF'],
+                    [1, '#333']
+                ]
+            },
+            borderWidth: 0,
+            outerRadius: '112%'
+        }, {
+            backgroundColor: {
+                linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+                stops: [
+                    [0, '#333'],
+                    [1, '#FFF']
+                ]
+            },
+            borderWidth: 2,
+            outerRadius: '107%'
+        }, {
+            // default background
+        }, {
+            backgroundColor: '#DDD',
+            borderWidth: 0,
+            outerRadius: '105%',
+            innerRadius: '103%'
+        }]
+    },
+
+    // the value axis
+    yAxis: {
+        min: 0,
+        max: 2600,
+
+        minorTickInterval: 'auto',
+        minorTickWidth: 1,
+        minorTickLength: 10,
+        minorTickPosition: 'inside',
+        minorTickColor: '#666',
+
+        tickPixelInterval: 25,
+        tickWidth: 2,
+        tickPosition: 'inside',
+        tickLength: 15,
+        tickColor: '#666',
+        labels: {
+            step: 2,
+            rotation: 'auto'
+        },
+        title: {
+            text: 'Watt'
+        },
+        plotBands: [{
+            from: 1000,
+            to: 2600,
+            color: '#DF5353' // red
+        }, {
+            from: 0,
+            to: 1000,
+            color: '#55BF3B' // green
+        }]
+    },
+
+    series: [{
+        name: 'Watt',
+        data: [0],
+        tooltip: {
+            valueSuffix: ' Watt'
+        }
+    }]
+});
+
+// strumento a indice
+var chart3 = new Highcharts.chart('container3', {
+    chart: {
+        type: 'gauge',
+        plotBackgroundColor: null,
+        plotBackgroundImage: null,
+        plotBorderWidth: 0,
+        plotShadow: false
+    },
+    title: {
+        text: 'Vesc Temperature'
+    },
+
+    pane: {
+        startAngle: -130,
+        endAngle: 130,
+        background: [{
+            backgroundColor: {
+                linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+                stops: [
+                    [0, '#FFF'],
+                    [1, '#333']
+                ]
+            },
+            borderWidth: 0,
+            outerRadius: '112%'
+        }, {
+            backgroundColor: {
+                linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+                stops: [
+                    [0, '#333'],
+                    [1, '#FFF']
+                ]
+            },
+            borderWidth: 2,
+            outerRadius: '107%'
+        }, {
+            // default background
+        }, {
+            backgroundColor: '#DDD',
+            borderWidth: 0,
+            outerRadius: '105%',
+            innerRadius: '103%'
+        }]
+    },
+
+    // the value axis
+    yAxis: {
+        min: 0,
+        max: 85,
+
+        minorTickInterval: 'auto',
+        minorTickWidth: 1,
+        minorTickLength: 10,
+        minorTickPosition: 'inside',
+        minorTickColor: '#666',
+
+        tickPixelInterval: 25,
+        tickWidth: 2,
+        tickPosition: 'inside',
+        tickLength: 15,
+        tickColor: '#666',
+        labels: {
+            step: 2,
+            rotation: 'auto'
+        },
+        title: {
+            text: 'celsius'
+        },
+        plotBands: [{
+            from: 60,
+            to: 85,
+            color: '#DF5353' // red
+        }, {
+            from: 0,
+            to: 60,
+            color: '#55BF3B' // green
+        }]
+    },
+
+    series: [{
+        name: 'celsius',
+        data: [0],
+        tooltip: {
+            valueSuffix: ' celsius'
+        }
+    }]
+});
+
+// grafico volts
+var chartT = new Highcharts.Chart({
+  chart:{ renderTo : 'chart-volts' },
+  title: { text: 'Volts every 1 sec.' },
+  series: [{
+    showInLegend: false,
+    data: []
+  }],
+  plotOptions: {
+    line: { animation: false,
+      dataLabels: { enabled: true }
+    },
+    series: { color: '#059e8a' }
+  },
+  xAxis: { type: 'datetime',
+    dateTimeLabelFormats: { second: '%H:%M:%S' }
+  },
+  yAxis: {
+    title: { text: 'Volts' }
+  },
+  credits: { enabled: false }
+});
+
+
+// grafico watt
+var chartWatt = new Highcharts.Chart({
+  chart:{ renderTo : 'chart-watt' },
+  title: { text: 'Watt every 1 sec.' },
+  series: [{
+    showInLegend: false,
+    data: []
+  }],
+  plotOptions: {
+    line: { animation: false,
+      dataLabels: { enabled: true }
+    },
+    series: { color: '#aa9e8a' }
+  },
+  xAxis: { type: 'datetime',
+    dateTimeLabelFormats: { second: '%H:%M:%S' }
+  },
+  yAxis: {
+    title: { text: 'Watt' }
+  },
+  credits: { enabled: false }
+});
+
+// grafico temp
+var chartTemp = new Highcharts.Chart({
+  chart:{ renderTo : 'chart-temp' },
+  title: { text: 'Temperature every 1 sec.' },
+  series: [{
+    showInLegend: false,
+    data: []
+  }],
+  plotOptions: {
+    line: { animation: false,
+      dataLabels: { enabled: true }
+    },
+    series: { color: '#009eff' }
+  },
+  xAxis: { type: 'datetime',
+    dateTimeLabelFormats: { second: '%H:%M:%S' }
+  },
+  yAxis: {
+    title: { text: 'celsius' }
+  },
+  credits: { enabled: false }
+});
+
+
+setInterval(function ( ) {			
+		const url = 'data';
+		$.getJSON(url, function(data){			
+//		console.log(data);		
+		var time = (new Date()).getTime(); // Tempo corrente	
+		if(chartT.series[0].data.length > 10) {
+			chartT.series[0].addPoint([time, data.voltage], true, true, true);
+			chartWatt.series[0].addPoint([time, data.power], true, true, true);
+			chartTemp.series[0].addPoint([time, data.tempMosfet], true, true, true);
+		} else {
+			chartT.series[0].addPoint([time, data.voltage], true, false, true);
+			chartWatt.series[0].addPoint([time, data.power], true, false, true);
+			chartTemp.series[0].addPoint([time, data.tempMosfet], true, false, true);
+		}
+		chart1.series[0].points[0].update(data.voltage);
+		chart2.series[0].points[0].update(data.power);
+		chart3.series[0].points[0].update(data.tempMosfet);
+		});
+		
+		
+		
+}, 1000 );
+
+</script>
+

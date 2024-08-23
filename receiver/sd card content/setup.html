@@ -1,0 +1,246 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+	<link href="assist.css" rel="stylesheet" type="text/css"> 
+	<script src="jquery.js"></script>
+	<script src="highcharts.js"></script>  
+	<script src="highcharts-more.js"></script>  
+	
+	<title>TecnoFly</title>
+	  <div class="header">
+    <div class="container">
+	  <img src="tecnofly_logo.gif" alt="tecnofly" class="responsive">
+      <h2 class="page-title" align="center">Foil Assist Booster Setup</h2>
+    </div>
+	
+  </div>
+	<style>
+	.center {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+  width: 20%;
+}
+
+	html {
+    font-family: Arial, Helvetica, sans-serif;
+    text-align: center;
+  }
+    h2 {
+      font-family: Arial;
+      font-size: 2.5rem;
+      text-align: center;
+    }
+	h5 {
+      font-family: Arial;
+      font-size: 1rem;
+      text-align: center;
+    }
+	.card {
+    background-color: #F8F7F9;;
+    box-shadow: 2px 2px 12px 1px rgba(140,140,140,.5);
+    padding-top:10px;
+    padding-bottom:20px;
+    }
+	.button {
+    padding: 15px 50px;
+    font-size: 24px;
+    text-align: center;
+    outline: none;
+    color: #fff;
+    background-color: #0f8b8d;
+    border: none;
+    border-radius: 5px;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: rgba(0,0,0,0);
+   }
+   .button:active {
+     background-color: #0f8b8d;
+     box-shadow: 2 2px #CDCDCD;
+     transform: translateY(2px);
+   }
+   .state {
+     font-size: 1.5rem;
+     color:#8c8c8c;
+     font-weight: bold;
+   }
+   .responsive {
+  width: 50%;
+  height: auto;
+}
+
+</style>
+
+<script type="text/javascript">	
+
+$(function() {			
+	
+		$("#serial").on('change', function(e) {
+					e.preventDefault();			
+					var geturl = "/serial?number=" + $("#serial").val()
+					$.get(geturl, function (data) {
+					console.log("sent new serial number");
+					});
+					window.alert("Serial Number changed");
+		});	
+		
+/*
+		$("#delete").on('click', function(e) {
+					e.preventDefault();			
+					var geturl = "/delete"
+					$.get(geturl, function (data) {
+					console.log("Delete log files");
+					});
+					window.alert("LOG Files deleted");
+		});	
+*/		
+
+		$("#upgrade").on('click', function(e) {
+					e.preventDefault();			
+					var geturl = "/upgrade"
+					$.get(geturl, function (data) {
+					console.log("upgrade");
+					});
+					window.alert("Before click, the WiFi hot spot tecnofly must be active");
+		});	
+});
+
+  var xhttp = new XMLHttpRequest();
+  xhttp.onreadystatechange = function() {
+		if (this.readyState == 4 && this.status == 200) {			  
+			version = parseFloat(this.responseText);
+			console.log(this.responseText);		
+			document.getElementById("version").innerHTML = this.responseText;
+		}	
+  };
+  xhttp.open("GET", "/ver", true);
+  xhttp.send();
+
+  var xhttp = new XMLHttpRequest();
+  xhttp.onreadystatechange = function() {
+		if (this.readyState == 4 && this.status == 200) {			  
+			rx_number = parseFloat(this.responseText);
+			console.log(rx_number);		
+			document.getElementById("rx_number").innerHTML = rx_number;
+		}	
+  };
+  xhttp.open("GET", "/rx_number", true);
+  xhttp.send();
+
+
+$.get('/readMessage', function(data) {
+      const [var1, var2, var3] = data.split(",");
+		console.log (var1);
+		console.log (var2);
+		console.log (var3);		
+      $('#input1').val(var1);
+      $('#input2').val(var2);
+      $('#input3').val(var3);	  
+    })
+    .fail(function(error) {
+      console.error('Errore nella richiesta:', error);
+    });
+	
+</script>
+
+</head>
+<body>
+<br>
+
+</div>
+<br><br>
+  <h4>Actual serial number of the receiver: <b id="rx_number"></h4>
+  <br>  
+  <hr>
+  <br>
+
+<tr class="on_off">
+	<td align="center"><font size="4"><b>Select new serial number for the Receiver<br>(The number must be changed also into the Controller)</td>
+
+				<div class="form-group">              
+					  <div class="col-xs-1">
+							<select id="serial" class="form-control">
+								  <option value="1">-</option>
+								  <option value="1">1</option>
+								  <option value="2">2</option>
+								  <option value="3">3</option>   
+								  <option value="4">4</option>
+								  <option value="5">5</option> 
+								  <option value="6">6</option>
+								  <option value="7">7</option>
+								  <option value="8">8</option>   
+								  <option value="9">9</option>								  
+							</select>
+					  </div>
+				</div>		  
+	
+</tr>	
+ 
+</div>
+  <br>  
+  <hr>
+<div class="content">
+    <div class="card">
+		<td align="center"><font size="4"><b>Welcome message</td><br><br>
+		<form action="/Wmessage">
+			  row 1: <input type="text" id="input1" name="input1" maxlength="7"><br><br>
+			  row 2: <input type="text" id="input2" name="input2" maxlength="7"><br><br>
+			  row 3: <input type="text" id="input3" name="input3" maxlength="7"><br><br>			  
+			  <input type="submit" value="Store message" class="button">
+		</form><br>
+
+    </div>
+</div>
+  <br>  
+  <hr>
+  <br>    
+  
+<!--   
+<div class="content">
+    <div class="card">
+	  <p><a href="/delete"><button id="button" class="button">Delete LOG Files</button></a></p>	
+    </div>
+</div>	
+  <br>  
+  <hr>
+  <br>  
+-->
+
+<div class="content">
+    <div class="card">
+	  <p><a href="/upgrade"><button id="button" class="button">Upgrade firmware from server</button></a></p>	
+    </div>
+</div>	
+  <br>  
+  <hr>
+  <br>
+<div class="content">
+    <div class="card">
+	  <p><a href="/update"><button id="button" class="button">Upgrade firmware by file</button></a></p>
+    </div>
+</div>
+  <br>  
+  <hr>
+  <br>
+<div class="content">
+    <div class="card">
+	  <p><a href="/index.html"><button id="button" class="button">Back home</button></a></p>
+    </div>
+</div>
+<br><br>
+<div class="content">
+	<div class="card">
+		<h4>Written by R. Assiro - Firmware Ver. <b id="version"></h5>
+	</div>
+</div>  
+  <br>  
+  <hr>
+  <br>
+</body>
+</html>
