@@ -7,3 +7,4 @@ receiver based on ESP32 WROOM
 Output of the receiver is PPM signal for VESC 75100
 
 VESC data are stored on SDCARD of the reiceiver and showed on trasmitter's display
+The receiver module generates a wifi hot spot where is possible to connect by a browser for data analyze and settings
