@@ -12,5 +12,5 @@ VESC data are stored on SDCARD of the reiceiver and showed on trasmitter's displ
 
 The receiver module generates a wifi hot spot where is possible to connect by a browser for data analyze and settings
 
-The Lora module is optional in the recever and transimetter. The firmware auto detect and use LoRa protocoll ift te module is connected to the ESP, and the trigger value could be sent by the channel in parallel. This could increare the performance of the transmitions in the water
+The Lora module is optional in the receiver and transimetter. The firmware auto detect and use LoRa protocoll if the module is connected to the ESP. The trigger value from hall sensor could be sent by the LoRa channel in parallel to the ESP-NOW communication. LoRa transmition could improve the performance of the transmitions in the water
 
