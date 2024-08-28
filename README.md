@@ -1,4 +1,8 @@
+#TecnoFly remote controller
+
 # Controller for electrical hydrofoil assist system
+
+Basically it's a wireless remote controller for any motor conneted to an ESC motor control. It was born for hydrofoiling motor assist, but it cold be used for electrical skate an others device.
 
 The protocol used for the transmition data is ESP-NOW
 
@@ -6,7 +10,7 @@ transmitter based on ESP8266 D1 Mini
 
 receiver based on ESP32 WROOM
 
-Output of the receiver is PPM signal for VESC 75100
+Output of the receiver is PPM signal for VESC 75100 and serial data form it are managed.
 
 VESC data are stored on SDCARD of the reiceiver and showed on trasmitter's display
 
