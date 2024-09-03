@@ -8,9 +8,9 @@ The protocol used for the transmition data is ESP-NOW and LoRa.
 
 transmitter based on ESP8266 D1 Mini
 
-receiver based on ESP32 WROOM
+receiver based on ESP32 WROOM 32U
 
-Output of the receiver is PPM signal for VESC 75100 and serial data form it are managed.
+Output of the receiver is PPM signal for VESC 75100 and serial data from it are managed.
 
 VESC data are stored on SDCARD of the reiceiver and showed on trasmitter's display
 
