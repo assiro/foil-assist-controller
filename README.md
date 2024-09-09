@@ -6,11 +6,11 @@ Basically it's a wireless remote controller for any motor conneted to an ESC mot
 
 The protocol used for the transmition data is ESP-NOW and LoRa.
 
-transmitter based on ESP8266 D1 Mini
+ESP-NOW operates as a peer-to-peer protocol, meaning it allows direct communication between two devices. Each ESP device has a unique MAC address which is used to identify the receiving board. LoRa is a wireless modulation technique derived from Chirp Spread Spectrum technology. LoRa modulated transmission is robust against disturbances and can be received across great distances.
 
-receiver based on ESP32 WROOM 32U
+The transmitter is based on ESP8266 D1 Mini, the receiver is based on ESP32 WROOM 32U
 
-Output of the receiver is PPM signal for VESC 75100 and serial data from it are managed.
+Output of the receiver is PPM signal for VESC 75100 and serial datas from it are managed.
 
 VESC data are stored on SDCARD of the reiceiver and showed on trasmitter's display
 
