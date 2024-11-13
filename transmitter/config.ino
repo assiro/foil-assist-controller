@@ -7,7 +7,7 @@ void config_menu(){
 //      Serial.print("Throttle mode: "); Serial.println(THmode);
       EEPROM.get(8, TXmode);
       if (TXmode > 2){TXmode = 0;}
-//      TXmode = 0; if(noLora == false) {TXmode = 2;} // insert this row if remove select mode from menu
+      TXmode = 0; if(noLora == false) {TXmode = 2;} // insert this row if remove select mode from menu
       EEPROM.get(0, valMax);
       EEPROM.get(4, valMin);
       valMiddle = ((valMax - valMin) / 2) + valMin;
@@ -82,8 +82,8 @@ void config_menu(){
             delay(1500);
 //          selectBoost();  
 //            delay(1500);
-            selectMode();   // SELECTION OF TRANSMIT MODE LORA ESP-NOW          
-            delay(1500);
+//            selectMode();   // SELECTION OF TRANSMIT MODE LORA ESP-NOW          
+//            delay(1500);
             selectThrottleMode(); // throttle mode
             delay(1500);
             selectDisplayMode(); // display view mode

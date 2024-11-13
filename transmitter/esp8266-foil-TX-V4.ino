@@ -25,7 +25,7 @@
 #include <ESP8266WiFiMulti.h>
 #include <ESP8266HTTPClient.h>
 ESP8266WiFiMulti WiFiMulti;
-String VERSION = "4.30";
+String VERSION = "4.32";
 const char* ssid     = "tecnofly";
 const char* password = "tecnofly";
 String upgradeServer = "http://www.eoloonline.it/firmware/foilAssist/";
