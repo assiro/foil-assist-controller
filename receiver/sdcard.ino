@@ -81,3 +81,20 @@ void deleteFile(fs::FS &fs, const char * path){
   }
 }
 
+void handleDeleteFile(AsyncWebServerRequest *request) {
+    if (!request->hasParam("file")) {
+        request->send(400, "text/plain", "Error: missing file!");
+        return;
+    }
+    String fileName = "/" + request->getParam("file")->value();
+    if (!SD.exists(fileName)) {
+        request->send(404, "text/plain", "Error: missing file!");
+        return;
+    }
+    if (SD.remove(fileName)) {
+        request->send(200, "text/plain", "File deleted: " + fileName);
+    } else {
+        request->send(500, "text/plain", "Error deleting file.");
+    }
+}
+

@@ -14,10 +14,15 @@ void api(){
       });
 
       server.on("/rx_number", HTTP_GET, [](AsyncWebServerRequest *request){
-          uint rxNumber = EEPROM.read(0);
-          char serialNumber[2]; 
-          itoa(rxNumber, serialNumber, 10);
-          request->send_P(200, "text/plain", serialNumber);
+            uint8_t lsb = EEPROM.read(1);
+            uint8_t msb = EEPROM.read(2);
+
+            uint16_t rxNumber = (msb << 8) | lsb;
+            Serial.print("EEPROM serial number: ");
+            Serial.println(rxNumber);
+            char serialNumber[5]; 
+            itoa(rxNumber, serialNumber, 10);
+            request->send_P(200, "", serialNumber);
       });
 
       server.on("/Wmessage", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -25,19 +30,13 @@ void api(){
             String wmessage2;
             String wmessage3;        
             if (request->hasParam("input1")) {
-              wmessage1 = request->getParam("input1")->value();
-    //          Serial.print("Welcome message 1: ");
-    //          Serial.println(wmessage1);      
+              wmessage1 = request->getParam("input1")->value();  
             }    
             if (request->hasParam("input2")) {
               wmessage2 = request->getParam("input2")->value();
-    //          Serial.print("Welcome message 2: ");
-    //          Serial.println(wmessage2);
             }
             if (request->hasParam("input3")) {
               wmessage3 = request->getParam("input3")->value();
-    //          Serial.print("Welcome message 3: ");
-    //          Serial.println(wmessage3);
             }
             const char* path = "/message.txt";
             file = SD.open(path, FILE_WRITE);
@@ -57,27 +56,42 @@ void api(){
         request->send_P(200, "text/plain", fileNameChar);
       });
 
-    // Send a GET request to <ESP_IP>/serial?number=5>
-      server.on("/serial", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    // Send a GET request generate random trasmission code and store in eeprom
+      server.on("/boardCode", HTTP_GET, [] (AsyncWebServerRequest *request) {
+                request->send(200, "text/plain", "Generating new transmittion code for the board...");
+                generateBoardCode();
+      });
+
+        server.on("/read_autolock", HTTP_GET, [] (AsyncWebServerRequest *request) {
+                uint autoLock = EEPROM.read(0);
+                char lockValue[2]; 
+                itoa(autoLock, lockValue, 10);
+                request->send_P(200, "text/plain", lockValue);
+        });
+
+    // Send a GET request to <ESP_IP>/autolock?number=1>   (1 or 0 to enable and disable)
+      server.on("/autolock", HTTP_GET, [] (AsyncWebServerRequest *request) {
             String inputMessage1;     
             if (request->hasParam(PARAM_INPUT_1)) {
-              inputMessage1 = request->getParam(PARAM_INPUT_1)->value();
-              request->send(200, "text/plain", "Serial Number setting to: " + inputMessage1);
-              byte newSerialNumber = inputMessage1.toInt();
-              Serial.print("Writing new coding number: ");
-              Serial.println(newSerialNumber);
-              EEPROM.write(0, newSerialNumber);
-              EEPROM.commit();
-              delay(2000);
-              Serial.print("Rebooting...");
-              ESP.restart();
+                inputMessage1 = request->getParam(PARAM_INPUT_1)->value();
+                request->send(200, "text/plain", "AUTO LOCK setting to: " + inputMessage1);
+                byte newautolock = inputMessage1.toInt();
+                Serial.print("Writing AUTO LOCK to: ");
+                Serial.println(newautolock);
+                EEPROM.write(0, newautolock);
+                EEPROM.commit();
+                if(newautolock == 0){
+                        gravityEnable = false;
+                }else{  
+                        gravityEnable = true;
+                }
             }else {
-              inputMessage1 = "GET ERROR";
+                inputMessage1 = "GET ERROR";
             }
-    //        Serial.println(inputMessage1);
       });
+
 // offset for Vesc battery reading voltage
-      server.on("/offset", HTTP_GET, [] (AsyncWebServerRequest *request) {
+      server.on("/offset", HTTP_GET, [] (AsyncWebServerRequest *request) { // /offset?number=0
             String inputMessage1;     
             if (request->hasParam(PARAM_INPUT_1)) {
               inputMessage1 = request->getParam(PARAM_INPUT_1)->value();    
@@ -113,7 +127,7 @@ void api(){
 
       server.on("/readMessage", HTTP_GET, [](AsyncWebServerRequest *request){
             readMessage();
-            char messagex[25];
+            char messagex[25] = "";
             strcat(messagex, data.message1); 
             strcat(messagex, ",");
             strcat(messagex, data.message2); 
@@ -151,40 +165,57 @@ void api(){
             request->send(file, fileName, "text/plain", false);
       });
 
+// Endpoint per visualizzare i file della SPIFFS
+    server.on("/list", HTTP_GET, [](AsyncWebServerRequest *request) {
+        StaticJsonDocument<1024> jsonDoc;
+        JsonArray filesArray = jsonDoc.createNestedArray("files");
 
-/*
-      server.on("/spin1", HTTP_GET, [](AsyncWebServerRequest *request){
-            float rpm = -100000;  
-              UART.setRPM(rpm);
-              request->send(200, "text/plain", "ATTEMPT1 to change Spin to right...");
-      });
+        File root = SD.open("/");
+        File file = root.openNextFile();
 
-      server.on("/spin2", HTTP_GET, [](AsyncWebServerRequest *request){         
+        while (file) {
+            JsonObject fileObj = filesArray.createNestedObject();
+            fileObj["name"] = file.name();
+            fileObj["size"] = file.size();
+            file = root.openNextFile();
+        }
+        String jsonString;
+        serializeJson(jsonDoc, jsonString);
+        request->send(200, "application/json", jsonString);
+    });
 
-bool invertDirection = false;
-  // Pacchetto base di configurazione (esempio semplificato)
-  uint8_t payload[3];
-  // Comando: COMM_WRITE_CONF
-  payload[0] = 0x01;  // Command ID per COMM_WRITE_CONF
-  payload[1] = invertDirection ? 1 : 0;  // Flag per invertire direzione
-  // Calcolo del checksum (semplice XOR di tutti i byte del payload)
-  uint8_t checksum = payload[0] ^ payload[1];
-  // Costruzione del pacchetto completo
-  uint8_t packet[6];
-  packet[0] = 0x02;  // Inizio del pacchetto
-  packet[1] = sizeof(payload);  // Lunghezza del payload
-  packet[2] = payload[0];
-  packet[3] = payload[1];
-  packet[4] = checksum;  // Checksum
-  packet[5] = 0x03;  // Fine del pacchetto
+    // Endpoint per il caricamento dei file su SD card
+    server.on("/upload", HTTP_POST, [](AsyncWebServerRequest *request) {
+            request->send(200, "text/plain", "Upload done");
+    },[](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
+        static File file;  
+        if (index == 0) {  // Inizio del caricamento
+            Serial.printf("Upload Start: %s\n", filename.c_str());
+            SD.remove(("/" + filename).c_str());  // Rimuove il vecchio file
+            file = SD.open(("/" + filename).c_str(), FILE_WRITE);
+            if (!file) {
+                Serial.println("Error opening file!");
+                return;
+            }
+        }
 
-  // Invio del pacchetto tramite seriale
-  Serial2.write(packet, sizeof(packet));
-  Serial.println("Pacchetto inviato per configurare la direzione del motore.");
+        if (file) {
+            file.write(data, len);  // Scrive i dati ricevuti
+        }
 
-          request->send(200, "text/plain", "ATTEMPT2 to change Spin to right...");
-      });
-*/
+        if (final) {  // Fine del caricamento
+            if (file) {
+                file.close();
+                Serial.printf("Upload done: %s (%u bytes)\n", filename.c_str(), index + len);
+            } else {
+                Serial.println("Errore: file non valido durante la chiusura!");
+            }
+        }
+    }
+);
+
+server.on("/delete", HTTP_DELETE, handleDeleteFile);
+
 ////////////////////// API FOR DEVELOPING 
       server.on("/brake", HTTP_GET, [](AsyncWebServerRequest *request){
             float brake = -5;  
@@ -195,11 +226,6 @@ bool invertDirection = false;
       server.on("/volt", HTTP_GET, [](AsyncWebServerRequest *request){
           String battVoltage = String(voltage, 1);
           request->send_P(200, "text/plain", battVoltage.c_str());
-      });
-
-      server.on("/lora", HTTP_GET, [](AsyncWebServerRequest *request){
-          String lora = String(LoRa.packetRssi()) + " " + String(LoRa.packetSnr()); 
-          request->send_P(200, "text/plain", lora.c_str());
       });
 
       server.on("/sd", HTTP_GET, [](AsyncWebServerRequest *request){

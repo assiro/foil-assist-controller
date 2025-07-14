@@ -20,10 +20,11 @@ void rideToJson(){
       doc["maxTemp"] = maxTemp; 
       doc["powerAverage"] = powerAverage;
       doc["powerIndex"] = powerIndex;   
+      doc["watthour"] = watthour; 
 
       // Serialize JSON to file
       if (serializeJson(doc, file) == 0) {
-        Serial.println(F("Failed to write to file"));
+          Serial.println(F("Failed to write to file"));
       }
       // Close the file
       file.close();
@@ -56,11 +57,10 @@ String dataToJson(){
       doc["current"] = current;
       doc["tempMosfet"] = tempMosfet;
       doc["power"] = power;  
-      doc["amphour"] = amphour;
+ //     doc["amphour"] = amphour;
       doc["watthour"] = watthour; 
       doc["rpm"] = rpm;
       doc["powerIndex"] = powerIndex;   
-      doc["powerIndex"] = powerAverage;  
       doc["batpercentage"] = batpercentage;
       doc["minutes"] = Rminutes; 
       doc["seconds"] = Rseconds;
@@ -68,15 +68,6 @@ String dataToJson(){
       doc["maxTemp"] = maxTemp;
       doc["maxCurrent"] = maxCurrent; 
       doc["maxPower"] = maxPower;
-      if(loraStatus == true){
-            doc["rssi"] = -100; 
-            doc["snr"] = -15;
-            doc["lora"] = 1500;
-      }else{
-            doc["rssi"] = LoRa.packetRssi(); 
-            doc["snr"] = LoRa.packetSnr();
-            doc["lora"] = LoRaDelays; 
-      }
       doc["esp"] = EspDelays;
       doc["minutes"] = Tminutes; 
       doc["seconds"] = Tseconds;      

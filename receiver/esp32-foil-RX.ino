@@ -4,10 +4,15 @@
     
     This program is free software under the terms of the GNU General Public License 
     as published by the Free Software Foundation.
-    VERSION 1.xx Jun 2024
+    VERSION 1.6x May 2025
     ESP32 FOIL ASSIST RECEIVER AND VESC DATA LOGGER
     Connections VESC: GPIO 16= white, 17= black, PPM white = GPIO 4
     Connections to SD CARD CS = GPIO 5
+    // EEPROM byte usage: 0-3 = RXmode; 4-7 = vesc offset; 8-11 = VESC offset;
+    -REBOOT ISSUE .Downgrading to the previous version of esp32 Library board by espressif to version 3.0.7 solved the problem.
+    -Library modify: ElegantOTA flag to enable AsyncWebServer mode file ElegantOTA.h
+    VERSION 1.60 last firmware with LoRa module management
+    -1.65 new pairing system activated gravity sensor
 */
 #include <WiFi.h>
 #include <esp_now.h>
@@ -20,7 +25,6 @@
 #include <ESP32Servo.h>
 #include <esp_wifi.h>
 #include <ESPAsyncWebServer.h>
-#include <LoRa.h>
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
@@ -29,25 +33,23 @@
 #include <EEPROM.h>
 #include <DNSServer.h>
 #include <ArduinoJson.h>
-#include <ElegantOTA.h>
+#include <ElegantOTA.h> // modificated of elegantOTA.h to enable AsyncWebServer mode
 
-//define the pins used by the transceiver module
-#define loraEN 15
-#define rst 14
-#define dio0 2
 #define EEPROM_SIZE 32
 #define escpin 4
 const int chipSelect = SS;
 const char* ssidService     = "tecnofly";
 const char* passwordService = "tecnofly";
 String upgradeServer = "http://www.eoloonline.it/firmware/foilAssist/";
-String upgradeFile = "foilAssistReceiver.bin";
-const char ssidName[] = "TecnoFly eBooster ";
+String upgradeFile = "foilAssistReceiver.bin";  
+const char ssidName[] = "TecnoFly ";
 char ssid[20];
 
 const char* password = "";
-String VERSION = "1.52";
+String VERSION = "1.65";
 const char* PARAM_INPUT_1 = "number";
+const int GRAVITY = 33; // gravity sensor for auto lock
+const int GRAVITY2 = 32; // gravity sensor 2 for auto lock
 
 IPAddress local_IP(192,168,10,1);//Set the IP address of ESP32 itself
 IPAddress gateway(192,168,10,1);   //Set the gateway of ESP32 itself
@@ -61,31 +63,49 @@ File file;
 int Poles = 14;                  //Poles of motor
 int batEmptyValue = 320;    // value x 10
 int batFullValue = 410;  // max voltage x 10
-uint battFullCapacity = 380; //Wh - for Molicel P42A 21700 - 10s3p
+int minvoltage = 32;
+//int maxvoltage = 42;
+uint battFullCapacity = 390;//*(42-minvoltage)/(42-32); //Wh - for Molicel P42A 21700 - 10s3p
+
+struct VESCData {
+    char time[6];   // hh:mm formato
+    int rpm;
+    float voltage;
+    float current;
+    float Mcurrent;
+    int watts;
+    int throttle;
+};
 
 struct vescValues {
-  float voltage;  
-  float tempMosfet;
-  float current;
-  int power;
-  int batt;
-  int file;
-  int Rminutes;
-  int Rseconds;
-  uint powerCounter;
-  uint powerAverage;
-  uint powerIndex;
-  float receiverVersion;
-  char message1[8];
-  char message2[8];
-  char message3[8];  
-  int Tminutes;
-  int Tseconds;  
+    float voltage;  
+    float tempMosfet;
+    float current;
+    int power;
+    int batt;
+    int file;
+    int Rminutes;
+    int Rseconds;
+    uint powerCounter;
+    uint powerAverage;
+    int powerIndex;
+    float receiverVersion;
+    char message1[8];
+    char message2[8];
+    char message3[8];  
+    int Tminutes;
+    int Tseconds;  
+    int watthour;
+    uint takeOff;
+    uint wave;
+    uint waveBestTime;
+    uint rideNumber;
+    bool gravityAlarm;
+
 };
 
 struct vescValues data;
 bool espStatus = true;
-bool loraStatus = true;
 bool vescReady = false;
 float tempMosfet;
 float rpm;
@@ -93,15 +113,15 @@ float voltage;
 float current;
 float motorCurrent;
 int power;
-float amphour;
+//float amphour;
 float watthour;
-uint batpercentage;
+int batpercentage;
 uint batCapacity;
 uint percentageOfCapacity;
 unsigned long totalWatt;
 uint powerCounter;
 uint powerAverage;
-uint powerIndex;
+int powerIndex;
 uint voltageReadCounter;
 float voltageAverage;
 int fileName;
@@ -119,9 +139,16 @@ float voltageOffset;
 char message1[8];
 char message2[8];
 char message3[8];
+uint takeOff;
+uint wave;
+uint waveBestTime;
+uint rideNumber;
+bool gravityAlarm;
+bool gravityEnable;
+
 Servo esc; 
 
-//Min and max pulse
+//variables
 int timeoutMax = 1300;
 int minPulseRate = 900; 
 int maxPulseRate = 2150;
@@ -129,10 +156,7 @@ int throttle = 0;
 bool recievedData = false;
 uint32_t lastTimeReceived = 0;
 uint32_t EspLastTimeReceived = 0;
-uint32_t LoRaLastTimeReceived = 0;
-uint32_t LoRaLastTimeCheck = 0;
 uint32_t delays = 0;
-uint32_t LoRaDelays = 0;
 uint32_t EspDelays = 0;
 int rowCounter = 0;
 int totalTime = 0;
@@ -144,13 +168,16 @@ bool recordEnable = false;
 uint inactivityCounter;
 bool serviceMode = false;
 bool firtsConnection = false;
-//RECEIVER MAC ADDRESS
-uint8_t newMACAddress[] = {0x4C, 0x11, 0xAE, 0x0D, 0xE5, 0x35}; //RECEIVER 1
-//TRANSMITTER MAC ADDRESS
-uint8_t broadcastAddress[] = {0xA4, 0xCF, 0x12, 0xDC, 0xB5, 0x8E};// trasmettitore 1
+bool oneTimeFlag = false;
 
-byte localAddress;// LoRa address of this device
-byte destination;// LoRa destination to send to
+unsigned long gravityThreshold = 5000; // ms time to lock due gravity sensor
+bool switchPressed = false;
+unsigned long switchPressStartTime = 0;
+unsigned long gravityReleaseThreshold = 2000; 
+unsigned long switchReleaseStartTime = 0;
+
+uint16_t boardCode; 
+uint8_t broadcastAddress[6] = {0xA4, 0xCF, 0x12, 0xDC, 0xB5, 0x8E};//TRANSMITTER MAC ADDRESS STANDARD
 
 esp_now_peer_info_t peerInfo;
 
@@ -170,16 +197,28 @@ void onReceiveData(const uint8_t * mac, const uint8_t *data, int len) {
       int throttle_value;
       memcpy(&throttle_value, data, sizeof(throttle_value));
       EspDelays = millis() - EspLastTimeReceived;
-      if (throttle_value == 200){
+
+      if (throttle_value == 250 && oneTimeFlag == false){
           esc.write(0);
-          EEPROM.write(4, 0x0A);
-          EEPROM.commit();
-          Serial.println("State setup ON saved in flash memory"); //IT NEEDS A REBOOT
-          delay(3000);
-//          ESP.restart();
+          rideAnalysis();
+          throttle_value = 0;
       }
+      
+      if (throttle_value == 200 && oneTimeFlag == false){
+          esc.write(0);
+          uint serviceFlag = EEPROM.read(4);
+          if (serviceFlag != 0x0A){
+                EEPROM.write(4, 0x0A); // save flag on eeprom for next reboot
+                EEPROM.commit();
+                Serial.println("State setup ON saved in flash memory"); //IT NEEDS A REBOOT
+          }         
+          throttle_value = 0;
+    //    delay(3000); ESP.restart();         
+      }
+
+      if((oneTimeFlag) and (throttle_value < 100)){oneTimeFlag = false;}
       throttle = map(throttle_value, 0, 99, 0, 180); // Write the PWM signal to the ESC (0-255).
-      if(throttle_value == 200){throttle = 0;}
+      if(throttle_value > 100){throttle = 0;}
       esc.write(int(throttle));
       if (throttle_value > 20){
           recordEnable = true;
@@ -188,228 +227,124 @@ void onReceiveData(const uint8_t * mac, const uint8_t *data, int len) {
       }
       EspLastTimeReceived = millis();
       lastTimeReceived = millis();       
-      /*
-      Serial.print("Data by ESP ");
+      /**/
+      Serial.print("Throttle: ");
       Serial.print(throttle_value);
-      Serial.print(" - delay: ");
-      Serial.println(EspDelays);  */
+      Serial.print(" - period: ");
+      Serial.println(EspDelays);  
+    //  if(gravityAlarm){Serial.println("ALARM");}
 }
   
   
 class CaptiveRequestHandler : public AsyncWebHandler {
 public:
-  CaptiveRequestHandler() {}
-  virtual ~CaptiveRequestHandler() {}
-  bool canHandle(AsyncWebServerRequest *request){
-      return request->url() == "/";
-  }
-
-  void handleRequest(AsyncWebServerRequest *request) {
-      request->send(SD, "/index.html");
-      Serial.println("Client Connected debug 1");
-  }
+    CaptiveRequestHandler() {}
+    virtual ~CaptiveRequestHandler() {}
+    bool canHandle(AsyncWebServerRequest *request){
+        return request->url() == "/";
+    }
+    void handleRequest(AsyncWebServerRequest *request) {
+        request->send(SD, "/index.html");
+        Serial.println("Client Connected debug 1");
+    }
 };
 
 
+
 void setup() {
-      Serial.begin(115200);
-      Serial2.begin(115200, SERIAL_8N1, 16, 17);// VESC GPIO 16=RX and 17=TX */
-      UART.setSerialPort(&Serial2);  /** Define which ports to use as UART */
-      if(!SPIFFS.begin(FORMAT_SPIFFS_IF_FAILED)){    // Initialize SPIFFS
-            Serial.println("An Error has occurred while mounting SPIFFS");
+        Serial.begin(115200);
+        Serial2.begin(115200, SERIAL_8N1, 16, 17);// VESC GPIO 16=RX and 17=TX */
+        pinMode(GRAVITY, INPUT_PULLUP);
+        pinMode(GRAVITY2, INPUT_PULLUP);
+        UART.setSerialPort(&Serial2);  /** Define which ports to use as UART */
+        if(!SPIFFS.begin(FORMAT_SPIFFS_IF_FAILED)){    // Initialize SPIFFS
+                Serial.println("An Error has occurred while mounting SPIFFS");
+                return;
+        }     
+        esc.setPeriodHertz(50);    // standard 50 hz servo
+        esc.attach(escpin, minPulseRate, maxPulseRate);
+        esc.write(0); // init esc with 0 value
+
+        EEPROM.begin(EEPROM_SIZE);
+    //      int32_t channel = 0;
+    //      esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
+        WiFi.mode(WIFI_AP_STA);  // Set device as Access point
+        Serial.println("");  
+        Serial.println(VERSION);  
+
+        macSetting();
+
+        Serial.println("Setting Access Point... ");
+        Serial.println(WiFi.softAPConfig(local_IP, gateway, subnet) ? "Web Server Ready" : "Web Server Failed!");
+        WiFi.softAP(ssid, password);
+        Serial.println(ssid); 
+        delay(100);
+        initSDCard();
+        api();
+
+        dnsServer.start(53, "*", local_IP);
+        server.addHandler(new CaptiveRequestHandler()).setFilter(ON_AP_FILTER);
+        dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
+        dnsServer.setTTL(300);
+
+        server.serveStatic("/", SD, "/");
+        server.begin();      
+        
+        ElegantOTA.begin(&server);    // Start ElegantOTA
+
+        // Init ESP-NOW
+        if (esp_now_init() != 0) {
+            Serial.println("Error initializing ESP-NOW");
             return;
-      }     
-      esc.setPeriodHertz(50);    // standard 50 hz servo
-      esc.attach(escpin, minPulseRate, maxPulseRate);
-      esc.write(0); // init esc with 0 value
+        }else{
+            Serial.println("ESP-NOW initializing OK!");
+        }
+        esp_now_register_send_cb(OnDataSent);
+        esp_now_register_recv_cb(esp_now_recv_cb_t(onReceiveData));//      esp_now_register_recv_cb(onReceiveData);
 
-      EEPROM.begin(EEPROM_SIZE);
-//      int32_t channel = 0;
-//      esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
-      WiFi.mode(WIFI_AP_STA);  // Set device as Access point
-      Serial.println("");  
-      Serial.println(VERSION);  
-
-      uint EEPROMserialNumber = EEPROM.read(0);
-      Serial.print("EEPROM serial number: ");
+        // Register peer
+        memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+        peerInfo.channel = 0;  
+        peerInfo.encrypt = false;
+        
+        // Add peer        
+        if (esp_now_add_peer(&peerInfo) != ESP_OK){
+            Serial.println("Failed to add peer");
+            return;
+        }
     
-      if (EEPROMserialNumber > 9){EEPROMserialNumber = 1;}
-      if(EEPROMserialNumber == 1){
-            newMACAddress[5] = 0x35;
-            broadcastAddress[5] = 0x8E; 
-      }else if(EEPROMserialNumber == 2){
-            newMACAddress[5] = 0x36;
-            broadcastAddress[5] = 0x8F;
-      }else if(EEPROMserialNumber == 3){
-            newMACAddress[5] = 0x37; 
-            broadcastAddress[5] = 0x03;
-      }else if(EEPROMserialNumber == 4){  
-            newMACAddress[5] = 0x38;
-            broadcastAddress[5] = 0x04;
-      }else if(EEPROMserialNumber == 5){
-            broadcastAddress[5] = 0x05;
-            newMACAddress[5] = 0x39; 
-      }else if(EEPROMserialNumber == 6){
-            newMACAddress[5] = 0x40;
-            broadcastAddress[5] = 0x6;
-      }else if(EEPROMserialNumber == 7){
-            newMACAddress[5] = 0x41; 
-            broadcastAddress[5] = 0x07;
-      }else if(EEPROMserialNumber == 8){  
-            newMACAddress[5] = 0x42;
-            broadcastAddress[5] = 0x08;
-      }else if(EEPROMserialNumber == 9){
-            broadcastAddress[5] = 0x09;
-            newMACAddress[5] = 0x43; 
-      }
-      localAddress = newMACAddress[5];// LoRa address of this device
-      destination = broadcastAddress[5];// LoRa destination to send to      
-      Serial.println(EEPROMserialNumber);  
-
-      strcpy(ssid, ssidName);
-      char serialNumber[2]; 
-      itoa(EEPROMserialNumber, serialNumber, 10);
-      strcat(ssid, serialNumber);
-
-      Serial.print("--- MAC:  ");  
-      Serial.println(WiFi.macAddress());  
-      esp_wifi_set_mac(WIFI_IF_STA, &newMACAddress[0]);
-      Serial.print("NEW MAC:  ");
-      Serial.println(WiFi.macAddress());
-      Serial.println("Setting Access Point... ");
-      Serial.println(WiFi.softAPConfig(local_IP, gateway, subnet) ? "Web Server Ready" : "Web Server Failed!");
-      WiFi.softAP(ssid, password);
-      Serial.println(ssid); 
-      delay(100);
-      initSDCard();
-      api();
-
-
-      dnsServer.start(53, "*", local_IP);
-      server.addHandler(new CaptiveRequestHandler()).setFilter(ON_AP_FILTER);
-      dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
-      dnsServer.setTTL(300);
-
-
-      server.serveStatic("/", SD, "/");
-      server.begin();      
-      ElegantOTA.begin(&server);    // Start ElegantOTA
-
-      // Init ESP-NOW
-      if (esp_now_init() != 0) {
-          Serial.println("Error initializing ESP-NOW");
-          return;
-      }else{
-          Serial.println("ESP-NOW initializing OK!");
-      }
-      esp_now_register_send_cb(OnDataSent);
-      esp_now_register_recv_cb(esp_now_recv_cb_t(onReceiveData));//      esp_now_register_recv_cb(onReceiveData);
-
-      // Register peer
-      memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-      peerInfo.channel = 0;  
-      peerInfo.encrypt = false;
-      
-      // Add peer        
-      if (esp_now_add_peer(&peerInfo) != ESP_OK){
-          Serial.println("Failed to add peer");
-          return;
-      }
-
-    //setup LoRa transceiver module
-      LoRa.setPins(loraEN, rst, dio0);
-      if (!LoRa.begin(433E6)) {
-            Serial.println("Starting LoRa failed!");
-      }else{
-            LoRa.setPreambleLength(6);
-            LoRa.setTxPower(20, PA_OUTPUT_PA_BOOST_PIN);
-            LoRa.setSpreadingFactor(8); // 8 max
-//          LoRa.setSignalBandwidth(62.5E3); // default 125E3 - 62.5E3 - 41.7E3 - 31.25E3
-//          LoRa.setSyncWord(0xF3);
-            Serial.println("LoRa Initializing OK!");
-//Serial.println("LoRa Dump Registers");
-//LoRa.dumpRegisters(Serial);
-
-      }
- 
-      delay(500);
-      batStatus();
-//      dataFileCreate();
-      delay(500);
-      readFileNumber();
-      readMessage();
-      uint serviceFlag = EEPROM.read(4);
-      if (serviceFlag == 0x0A){
-            setupMode();  // check the service network for upgrading
-      }
-
+        delay(500);
+        batStatus();
+    //      dataFileCreate();
+        delay(500);
+        readFileNumber();
+        readMessage();
+        uint serviceFlag = EEPROM.read(4);
+        if (serviceFlag == 0x0A){
+                setupMode();  // check the service network for upgrading
+        }
+        serviceFlag = EEPROM.read(0);
+        if(serviceFlag > 0){gravityEnable = true;}
 }
 
 
 
 void loop() {
-    dnsServer.processNextRequest();
+        dnsServer.processNextRequest();
 
-//    EspDelays = millis() - EspLastTimeReceived;
-//    LoRaDelays = millis() - LoRaLastTimeReceived;
+        delays = millis() - lastTimeReceived;     
+        if (delays > timeoutMax){ esc.write(0); lastTimeReceived = millis();} // stop motor for safety
 
-    delays = millis() - lastTimeReceived;     
-    if (delays > timeoutMax){ esc.write(0); lastTimeReceived = millis();} // stop motor for safety
+        if(firtsConnection == false and throttle > 20 and vescReady == true){
+                firtsConnection = true;
+                dataFileCreate();// it creates the log file only in the firts use of throttle control
+        }    
 
-    if(millis() - LoRaLastTimeCheck > 99){  // every 100ms read LoRa register to reduce traffic on spi
-          if(firtsConnection == false and throttle > 20 and vescReady == true){
-                  firtsConnection = true;
-                  dataFileCreate();// it creates the log file only in the firts use of throttle control
-          }    
-          LoRaLastTimeCheck = millis();
-          onReceive(LoRa.parsePacket());      
-    }
-    getVescData();
+        getStateOfSensor();
+        getVescData();
 }
 
-// data is received by LoRa
-void onReceive(int packetSize) {  
-          LoRaDelays = millis() - LoRaLastTimeReceived;
-          if (LoRaDelays > 1500){loraStatus = true;}     
-          if (packetSize == 0) return;          // if there's no packet, return
-          int recipient = LoRa.read();          // recipient address
-          byte sender = LoRa.read();            // sender address
-          String incoming = "";
-          while (LoRa.available()) {incoming += (char)LoRa.read();}       
-          if (recipient != localAddress && sender != destination) {return;}   // if the recipient isn't this device or broadcast,
-          delays = millis() - lastTimeReceived;
-//          if (delays > 1000){loraStatus = true;}
 
-          LoRaLastTimeReceived = millis();
-          lastTimeReceived = millis();
-          int loraData = (incoming.toInt());
-          throttle = map(loraData, 0, 99, 0, 180); // Write the PWM signal to the ESC (0-255).
-          if((EspDelays > 500) or (EspDelays == 0)){
-                esc.write(int(throttle));
-                if (loraData > 20){
-                      recordEnable = true;
-                      inactivityCounter = 0;
-                      serviceMode = false;
-                }
-//                Serial.print("Data by LoRa!! - "); 
-//                Serial.println(EspDelays); 
-          }
- /*
-  Serial.print("Data by LoRa: "); 
-  Serial.print(loraData);
-  Serial.print(" - ");
-  Serial.print(throttle);
-  Serial.print(" - RSSI: " + String(LoRa.packetRssi()));
-  Serial.print("dBm - SNR: " + String(LoRa.packetSnr()));
-  Serial.print("dB - LoRa: ");
-  Serial.print(LoRaDelays);
-  Serial.print(" ESP: ");
-  Serial.println(EspDelays);  
-  Serial.print(" delays: ");
-  Serial.println(delays);    
-*/ 
-  loraStatus = false;
-}
 
 void setupMode(){ // UPGRADE FIRMWARE AND WEBSERVER 
     serviceMode = true;
@@ -507,7 +442,6 @@ void readFileNumber(){
     }
     file.close();
     itoa(fileName, fileNameChar,10);
-
 }
 
 void readMessage(){
@@ -530,3 +464,71 @@ void readMessage(){
   Serial.println(data.message3);  
 }
 
+
+void macSetting(){ // initialization of board code for transmition
+            uint8_t lsb = EEPROM.read(1);
+            uint8_t msb = EEPROM.read(2);
+            if((msb == 255) & (lsb == 255)){generateBoardCode();}
+
+            Serial.print("EEPROM serial number: ");
+            boardCode = (msb << 8) | lsb;
+            Serial.println(boardCode);  
+            Serial.println(boardCode, HEX);  
+            strcpy(ssid, ssidName);
+            char serialNumber[4]; 
+            itoa(boardCode, serialNumber, 10);
+            strcat(ssid, serialNumber);
+
+            broadcastAddress[4] = msb; 
+            broadcastAddress[5] = lsb;  
+            Serial.print("BROADCAST MAC ADDRESS: ");
+            for (int i = 0; i < 6; i++) {
+                if (i > 0) Serial.print(":");
+                Serial.printf("%02X", broadcastAddress[i]);
+            }
+            Serial.println();
+
+            uint8_t customMAC[6] = {0x4C, 0x11, 0xAE, 0x0D, msb, lsb};//RECEIVER MAC ADDRESS
+
+            Serial.print("OLD MAC:  ");  
+            Serial.println(WiFi.macAddress());  
+
+            // Imposta il nuovo MAC address
+            esp_err_t result = esp_wifi_set_mac(WIFI_IF_STA, customMAC);
+            if (result == ESP_OK) {
+                Serial.println("MAC address cambiato con successo!");
+                Serial.print("NEW MAC:  ");
+                Serial.println(WiFi.macAddress());                
+            } else {
+                Serial.print("Errore nel cambiare il MAC address. Codice errore: ");
+                Serial.println(result);
+            }
+}
+
+
+void getStateOfSensor() {
+    if (gravityEnable) {
+        int switchState = digitalRead(GRAVITY);
+        int switchState2 = digitalRead(GRAVITY2);
+        if ((switchState == LOW) or (switchState2 == LOW)){ 
+            if (!switchPressed) {
+                switchPressed = true;
+                switchPressStartTime = millis();
+            } else {
+                if (!gravityAlarm && millis() - switchPressStartTime >= gravityThreshold) {
+                    gravityAlarm = true;
+                }
+            }
+            switchReleaseStartTime = 0; 
+        } else { 
+            if (gravityAlarm) {
+                if (switchReleaseStartTime == 0) {
+                    switchReleaseStartTime = millis();
+                } else if (millis() - switchReleaseStartTime >= gravityReleaseThreshold) {
+                    gravityAlarm = false;
+                }
+            }
+            switchPressed = false;
+        }
+    }
+}

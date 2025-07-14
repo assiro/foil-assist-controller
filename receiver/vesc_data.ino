@@ -1,9 +1,5 @@
 void getVescData(){  
 if (millis() - lastDataVesc >= 1000) {       
-//Serial.println(EspDelays);
-//Serial.println(LoRaDelays);
-//if(espStatus == true){Serial.println("ESP fails");}       
-//if(loraStatus == true){Serial.println("LoRa fails");}
           if(firtsConnection){ //increment total time
                 totalTime ++;
                 Tminutes = totalTime / 60;
@@ -17,19 +13,25 @@ if (millis() - lastDataVesc >= 1000) {
                 Rseconds = rowCounter - 60 * Rminutes;
           }
           receiverVersion = VERSION.toFloat();
+          data.receiverVersion = receiverVersion;
+          data.Tminutes = Tminutes;
+          data.Tseconds = Tseconds;  
+          data.gravityAlarm = gravityAlarm;
           if ( UART.getVescValues() ) {
                   rpm = UART.data.rpm / (Poles / 2);                                // UART.data.rpm returns cRPM.  Divide by no of pole pairs in the motor for actual.
-                  voltage = (UART.data.inpVoltage) + voltageOffset;      
-                  current = (UART.data.avgInputCurrent);   
-                  tempMosfet = (UART.data.tempMosfet);    
+                  voltage = roundf(((UART.data.inpVoltage) + voltageOffset) * 10) / 10;      
+                  current = roundf(UART.data.avgInputCurrent);   
+                  tempMosfet = roundf((UART.data.tempMosfet) * 10) / 10;   
                   if(current<0){
                       power = 0;
                   }else{
                       power = voltage*current;
                   }
-                  amphour = (UART.data.ampHours);                                  
+         //         amphour = roundf((UART.data.ampHours) * 10) / 10;           
+
                   watthour = watthour + (current*voltage/3600);  
-                  motorCurrent = (UART.data.avgMotorCurrent);
+
+                  motorCurrent = roundf((UART.data.avgMotorCurrent) * 10) / 10;
                   if(power > 30){
                         totalWatt = totalWatt + power;
                         powerCounter ++;
@@ -41,20 +43,35 @@ if (millis() - lastDataVesc >= 1000) {
                                 int lowConsuption = 500; int highConsuption = 1500; int highRidingTime = 30; int lowRidingTime = 5;
                                 int powerIndex1 = map(powerAverage, lowConsuption, highConsuption, 100, 0); // funcion of average power
                                 int powerIndex2 = map(Rminutes, lowRidingTime, highRidingTime, 0, 100); // funcion of riding time
-                                if(powerIndex1 > 99){powerIndex1 = 99;}
-                                if(powerIndex2 > 99){powerIndex2 = 99;} 
-                                powerIndex = (powerIndex1 + powerIndex2) / 2;
+                                powerIndex1 = constrain(powerIndex1, 0, 100);
+                                powerIndex2 = constrain(powerIndex2, 0, 100);
+                                powerIndex = (powerIndex1 + powerIndex2) / 2; //VOTE in decimal calculation of votation for the ride
                         }         
                   } 
 ////////////////////////////////////////////////////////////////////////////////////////////
                   // calc of battery percentage from power consuption wh
-                  if((batpercentage > 45) and (voltage <= 38) and (watthour < 110) and (power < 100)) {batCapacity = 250 * batCapacity / battFullCapacity;}
-                  //if((voltage < 34.5) and (batpercentage > 20) and (power < 200)) {batCapacity = 200 * batCapacity / battFullCapacity;}
+        //          if((batpercentage > 45) and (voltage <= 38) and (watthour < 110) and (power < 100)) {batCapacity = 250 * batCapacity / battFullCapacity;}
+
+                  if((voltage < 32.5) and (batpercentage > 10) and (power < 200)) {batCapacity = 200 * batCapacity / battFullCapacity;}
 
                   batpercentage = batCapacity - watthour;
-                  if(watthour > batCapacity){batpercentage = 0;}
-                  int batPercentageCapacity = map(batpercentage, 0, batCapacity, 0, 99);
+
                   batpercentage = map(batpercentage, 0, batCapacity, 0, percentageOfCapacity); 
+                  batpercentage = constrain(batpercentage, 0, 99);
+
+                  if((batpercentage > 12) & (voltage < 34) & (power < 200)) {batpercentage = 10;}
+
+ /*              
+Serial.print(batpercentage);
+Serial.print("% - ");
+Serial.print(voltage);
+Serial.print("V - ");
+Serial.print(watthour);
+Serial.print("Wh - ");
+Serial.print(power);
+Serial.print("W - ");
+Serial.println("");
+*/   
 ////////////////////////////////////////////////////////////////////////////////////////////
 
                   if(voltage < minVoltage){minVoltage = voltage;}
@@ -73,23 +90,7 @@ if (millis() - lastDataVesc >= 1000) {
                   data.powerCounter = powerCounter; 
                   data.powerAverage = powerAverage;
                   data.powerIndex = powerIndex;
-                  data.receiverVersion = receiverVersion;
-                  data.Tminutes = Tminutes;
-                  data.Tseconds = Tseconds;  
-
- /*                  //Debug on serial
-                  int SDthrottle = map(throttle, 0, 180, 0, 99); 
-                  Serial.print("RPM "); Serial.print(rpm,0);Serial.print("\t");
-                  Serial.print("|V "); Serial.print(voltage,1);Serial.print("\t");
-                  Serial.print("|I "); Serial.print(current,1);Serial.print("\t");
-                  Serial.print("|W "); Serial.print(power,0);Serial.print("\t");                  
-                  Serial.print("|T "); Serial.print(tempMosfet,1);Serial.print("\t");
-                  Serial.print("|B "); Serial.print(batpercentage);Serial.print("%\t");
-                  Serial.print("|TH "); Serial.print(SDthrottle);Serial.print("%\t");
-                  Serial.print("|delay "); Serial.print(delays);Serial.print("\t");
-                  Serial.print("|BC "); Serial.print(batCapacity);Serial.print("Wh\t");
-                  Serial.println();
-*/            
+                  data.watthour = watthour;           
                   if(sdcard and recordEnable){
                         appendToFile(dataFileName);
                         rideToJson();
@@ -103,11 +104,10 @@ if (millis() - lastDataVesc >= 1000) {
                   data.batt = 0;
                   data.file = fileName;
                   data.powerAverage = 0;
-                  data.receiverVersion = receiverVersion;
-                  data.Tminutes = Tminutes;
-                  data.Tseconds = Tseconds;  
+                  data.powerIndex = 0;
           }
           esp_now_send(broadcastAddress, (uint8_t *) &data, sizeof(data)); 
+          data.rideNumber = 0;
           inactivityCounter++;       
       }
 }
@@ -137,8 +137,8 @@ void appendToFile(const char * path){
           file.print("|Pa "); file.print(powerAverage); file.print("W\t");
           file.print("|Pi "); file.print(powerIndex); file.print("\t");    
 //          file.print("|delay "); file.print(delays); file.print("ms\t");          
-          if(espStatus == true){file.print("|ESP"); file.print("\t");}       
-          if(loraStatus == true){file.print("|LoRa"); file.print("\t");}               
+          if(espStatus){file.print("|ESP"); file.print("\t");}                 
+          if(gravityAlarm){file.print("|ALARM"); file.print("\t");}          
           file.println();
       } else {
           Serial.println("Append failed");
@@ -180,40 +180,20 @@ void offsetCalc(){    // VESC reading voltage offset calc
 
 void batStatus(){   // staus of battery at start up
       offsetCalc();
-
-// POWER INDEX TEST AREA
-/*
-powerAverage = 900;
-Rminutes = 7;
-if (Rminutes < 5 or powerAverage < 400){
-  powerIndex = 0;
-  }else{
-                        int lowConsuption = 500; int highConsuption = 1500; int highRidingTime = 30; int lowRidingTime = 10;
-                        int powerIndex1 = map(powerAverage, lowConsuption, highConsuption, 100, 0); // funcion of average power
-                        int powerIndex2 = map(Rminutes, lowRidingTime, highRidingTime, 0, 100); // funcion of riding time
-                   //     if(powerIndex1 > 99){powerIndex1 = 99;}
-                   //     if(powerIndex2 > 99){powerIndex2 = 99;}
-          Serial.print("INDEX1: "); Serial.println(powerIndex1); 
-          Serial.print("INDEX2: "); Serial.println(powerIndex2); 
-                        powerIndex = (powerIndex1 + powerIndex2) / 2;
-          
-}         
-Serial.print("INDEX: "); Serial.println(powerIndex);
-*/
-
-
       for (int a=0; a<5; a++) {
           if ( UART.getVescValues() ) {
                   voltage = (UART.data.inpVoltage) + voltageOffset;                                 //Battery Voltage
                   tempMosfet = (UART.data.tempMosfet);    
                   Serial.print("Battery Voltage: "); Serial.print(voltage,1);Serial.println("V");
-                  batpercentage = (voltage - 3.2*10) / (42 - 3.2*10) * 100;   // battery 10s
+                  batpercentage = (voltage - minvoltage) / (42 - minvoltage) * 100;   // battery 10s
                   if(batpercentage > 99){batpercentage = 99;}
+                  Serial.print("Battery Full Capacity: "); Serial.println(battFullCapacity);
                   batCapacity = map(batpercentage, 0, 99, 0, battFullCapacity);
 
                   int V = voltage * 10;
                   int batConst = constrain(V, batEmptyValue, batFullValue);
                   batpercentage = map(batConst, batEmptyValue, batFullValue, 0, 99);
+                  batpercentage = constrain(batpercentage, 0, 99);
 
                   percentageOfCapacity = batpercentage;
                   Serial.print("Battery Capacity: "); Serial.print(batCapacity);Serial.println("Wh");
