@@ -1,10 +1,6 @@
 // Throttle curve functions
 // 0 <= throttle <= 100
 
-// extreme throttle curve
-int extreme_throttle_curve(float throttle) {
-  return 9*throttle/(0.065*throttle + 2.5);
-}
 
 // aggressive throttle curve
 int strong_throttle_curve(float throttle) {

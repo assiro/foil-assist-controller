@@ -1,13 +1,9 @@
 // EEPROM byte usage:
-// 0-3 = valMax; 4-7 = valMin; 8-11 = TXmode; 12-15 = RXmode; 16-19 = THmode; 20-23 = display mode
+// 0-3 = valMax; 4-7 = valMin; 8-11 = ???; 13-14 = MAC ADD; 16-19 = THmode; 20-23 = display mode
 
 void config_menu(){
       EEPROM.get(20, displayMode); // display view mode
       EEPROM.get(16, THmode); //throttle mode
-//      Serial.print("Throttle mode: "); Serial.println(THmode);
-      EEPROM.get(8, TXmode);
-      if (TXmode > 2){TXmode = 0;}
-      TXmode = 0; if(noLora == false) {TXmode = 2;} // insert this row if remove select mode from menu
       EEPROM.get(0, valMax);
       EEPROM.get(4, valMin);
       valMiddle = ((valMax - valMin) / 2) + valMin;
@@ -23,7 +19,7 @@ void config_menu(){
             WiFi.begin(ssid, password);
             valMax = hallValue - 3;
             EEPROM.put(0, valMax);  // int - so 4 bytes (next address is '4')
-            while (hallValue > valMiddle){  // rilascia throttle all'avvio per sicurezza
+            while (hallValue > valMiddle){  
                   delay(200);
                   hallValue = analogRead(hallPin);
                   display.clearDisplay();
@@ -58,7 +54,7 @@ void config_menu(){
             EEPROM.commit();
             valMiddle = ((valMax - valMin) / 2) + valMin;
             OTAstart();
-            while (hallValue < valMiddle){  // trhrottle off per restare connesso in rete e aggionare controller
+            while (hallValue < valMiddle){  // throttle off 
                 delay(100);
                 hallValue = analogRead(hallPin);
                 if(WiFi.status() == WL_CONNECTED) {              
@@ -77,18 +73,18 @@ void config_menu(){
                 }
             }
             digitalWrite(VIBRATOR,1);
+            digitalWrite(LED_BUILTIN,1);  
             delay (300);
             digitalWrite(VIBRATOR,0);            
-            delay(1500);
+            digitalWrite(LED_BUILTIN,0);  
+            delay(1000);
 //          selectBoost();  
 //            delay(1500);
-//            selectMode();   // SELECTION OF TRANSMIT MODE LORA ESP-NOW          
-//            delay(1500);
             selectThrottleMode(); // throttle mode
-            delay(1500);
+            delay(1000);
             selectDisplayMode(); // display view mode
-            delay(1500);
-            selectReceiver();
+            delay(1000);
+            pairing();
             delay(1000);
             ESP.restart();
       }  
@@ -97,95 +93,23 @@ void config_menu(){
       Serial.print("Hall min: ");
       Serial.println(valMin); */
       display.clearDisplay();
-      display.setTextSize(2);
-      display.setCursor(35,0);
+      display.setTextSize(3);
+      display.setCursor(20,0);
       display.print("BOARD");
-      display.setCursor(30,30);
-      display.print("NUMBER");  
-      display.setTextSize(8);
-      display.setCursor(48,60);
-      display.print(RXmode);    
+      display.setCursor(25,40);
+      display.print("CODE");  
+      display.setTextSize(4);
+      display.setCursor(5,85);
+      display.print(boardCode);    
       display.display();
-      delay(1500);
+      delay(2000);
+      /*
       digitalWrite(VIBRATOR,1);
       delay(200);          
-      digitalWrite(VIBRATOR,0);
+      digitalWrite(VIBRATOR,0);*/
 }
 
-void selectReceiver(){
-      bool exit = false;
-      int timeCounter = 0;
-      while(exit == false){
-            display.clearDisplay();
-            display.setTextSize(2);
-            display.setCursor(18,0);
-            display.println("RECEIVER");
-            display.setTextSize(1);
-            display.setCursor(12,30);
-            display.println("Select a receiver");
-            display.setCursor(15,100);
-            display.println("Receiver firmware");
-            display.setCursor(40,115);
-            display.print("Ver. ");
-            display.print(receiverVersion); 
-            display.setTextSize(2);
-            display.setCursor(5,60);
-            display.print("Receiver ");
-            if (RXmode == 1){
-                display.setCursor(110,60);
-                display.print("1");
-            }else if(RXmode == 2){
-                display.setCursor(110,60);
-                display.print("2");
-            }else if(RXmode == 3){    
-                display.setCursor(110,60);
-                display.print("3"); 
-            }else if(RXmode == 4){    
-                display.setCursor(110,60);
-                display.print("4"); 
-            }else if(RXmode == 5){    
-                display.setCursor(110,60);
-                display.print("5"); 
-            }else if(RXmode == 6){
-                display.setCursor(110,60);
-                display.print("6");
-            }else if(RXmode == 7){    
-                display.setCursor(110,60);
-                display.print("7"); 
-            }else if(RXmode == 8){    
-                display.setCursor(110,60);
-                display.print("8"); 
-            }else if(RXmode == 9){    
-                display.setCursor(110,60);
-                display.print("9"); 
-            }
-            display.display();
-            hallValue = analogRead(hallPin);
-            if (hallValue > valMiddle){      
-                delay(200);      
-                while (hallValue > valMiddle){
-                    hallValue = analogRead(hallPin);
-                    timeCounter ++;
-                    if (timeCounter == 6) {
-                        exit = true;
-                        digitalWrite(VIBRATOR,1);
-                        delay (300);
-                        digitalWrite(VIBRATOR,0);
-                    }
-                    delay (200);
-                }
-                if (timeCounter < 6){RXmode ++;}
-                if (RXmode > 9){RXmode = 1;}
-//                Serial.print(RXmode, DEC);
-                timeCounter = 0;  
-            }  
-            delay(100);
-      }
-      EEPROM.put(12, RXmode);
-      EEPROM.commit();
-//      boolean ok = EEPROM.commit();
-//      Serial.println((ok) ? "Hall values stored into eeprom" : "EEPROM write failed");
-}
+
 
 /////////////////////////////
 // Throttle mode selection //
@@ -232,8 +156,10 @@ void selectThrottleMode(){
                     if (timeCounter == 6) {
                         exit = true;
                         digitalWrite(VIBRATOR,1);
+                        digitalWrite(LED_BUILTIN,1);                       
                         delay (300);
                         digitalWrite(VIBRATOR,0);
+                        digitalWrite(LED_BUILTIN,0);                       
                     }
                     delay (200);
                 }
@@ -246,35 +172,28 @@ void selectThrottleMode(){
       EEPROM.put(16, THmode);
       EEPROM.commit();
 }
-///////////////////////////////////////////////////
 
-void selectMode(){
+void selectDisplayMode(){
       bool exit = false;
       int timeCounter = 0;
       while(exit == false){
             display.clearDisplay();
             display.setTextSize(2);
-            display.setCursor(2,0);
-            display.println("SETUP MODE");
-            display.setTextSize(1);
-            display.setCursor(18,35);
-            display.println("TRASMITION MODE");
-            display.setTextSize(2);
-            if (TXmode == 0){
-                display.setCursor(25,65);
-                display.println("ESP-NOW");
-                display.setCursor(20,90);
-                display.print("(2.4GHz)");
-            }else if(TXmode == 1){
-                display.setCursor(43,65);
-                display.print("LoRa");
-                display.setCursor(15,90);
-                display.print("(433MHz)");
-            }else if(TXmode == 2){    
-                display.setCursor(25,65);
-                display.print("ESP-NOW"); 
-                display.setCursor(25,90);
-                display.print("+ LoRa"); 
+            display.setCursor(25,0);
+            display.println("DISPLAY");
+            display.setCursor(40,25);
+            display.println("VIEW");
+            display.setCursor(10,75);
+            display.println("Display ");            
+            if (displayMode == 1){
+                display.setCursor(103,75);
+                display.println("1");
+            }else if(displayMode == 2 ){
+                display.setCursor(103,75);
+                display.print("2"); 
+            }else if(displayMode > 2 ){
+                display.setCursor(103,75);
+                display.print("3");     
             }
             display.display();
             hallValue = analogRead(hallPin);
@@ -286,19 +205,20 @@ void selectMode(){
                     if (timeCounter == 6) {
                         exit = true;
                         digitalWrite(VIBRATOR,1);
+                        digitalWrite(LED_BUILTIN,1);
                         delay (300);
                         digitalWrite(VIBRATOR,0);
+                        digitalWrite(LED_BUILTIN,0);
                     }
                     delay (200);
                 }
-                if (timeCounter < 6){TXmode ++;}
-                if (TXmode > 2){TXmode = 0;}
-                Serial.print(TXmode, DEC);
+                if (timeCounter < 6){displayMode ++;}
+                if (displayMode > 3){displayMode = 1;}
                 timeCounter = 0;  
             }  
             delay(100);
       }
-      EEPROM.put(8, TXmode);
+      EEPROM.put(20, displayMode);
       EEPROM.commit();
 }
 
@@ -310,79 +230,102 @@ void hallCalibration(){
             Serial.print("Hall middle: ");
             Serial.println(valMiddle);            
             display.clearDisplay();
+            display.setTextSize(2);
+            display.setCursor(27,0);
+            display.println("SENSOR");
+            display.setCursor(32,20);
+            display.println("ISSUE");            
             display.setTextSize(1);
-            display.setCursor(33,10);
-            display.println("HALL ISSUE");
-            display.setCursor(30,25);
+            display.setCursor(30,45);
             display.print(valMin);
-            display.setCursor(65,25);
+            display.setCursor(65,45);
             display.print(valMax);
+            display.setCursor(5,60);
+            display.println("TO DO PROCEDURE:");
             display.display();
-            delay (5000);
-            display.setCursor(5,40);
-            display.println("PULL TRIGGER...");
+            delay (6000);
+            display.setCursor(5,80);
+            display.println("- PULL TRIGGER...");
             display.display();
             delay(3000);
             hallValue = analogRead(hallPin);
             valMax = hallValue - 10;
             EEPROM.put(0, valMax); 
-            display.setCursor(5,55);
-            display.println("RELEASE TRIGGER...");
+            display.setCursor(5,100);
+            display.println("- RELEASE TRIGGER...");
             display.display();
             delay(3000);
             hallValue = analogRead(hallPin);
             valMin = hallValue + 20;
             EEPROM.put(4, valMin); 
             boolean ok = EEPROM.commit();
-            Serial.println((ok) ? "Hall values stored into eeprom" : "EEPROM write failed");
-            display.setCursor(5,70);
-            display.println("CALIBRATION DONE");
+//            Serial.println((ok) ? "Hall values stored into eeprom" : "EEPROM write failed");
+            display.setCursor(5,120);
+            display.println(" CALIBRATION DONE");
             display.display();
-            delay(3000);
+            delay(5000);
             valMiddle = ((valMax - valMin) / 2) + valMin;
             display.clearDisplay();
+            if(valMax<=valMin or valMax>1000 or valMin>900 or valMax<400 or (valMax - valMin) < 40){hall_issue();}
 }
 
-void selectDisplayMode(){
-      bool exit = false;
-      int timeCounter = 0;
-      while(exit == false){
-            display.clearDisplay();
-            display.setTextSize(2);
-            display.setCursor(25,0);
-            display.println("DISPLAY");
-            display.setCursor(40,25);
-            display.println("MODE");
-            if (displayMode == 1){
-                display.setCursor(15,75);
-                display.println("Display 1");
-            }else if(displayMode > 1 ){
-                display.setCursor(15,75);
-                display.print("Display 2"); 
-            }
-            display.display();
-            hallValue = analogRead(hallPin);
-            if (hallValue > valMiddle){      
-                delay(200);      
-                while (hallValue > valMiddle){
-                    hallValue = analogRead(hallPin);
-                    timeCounter ++;
-                    if (timeCounter == 6) {
-                        exit = true;
-                        digitalWrite(VIBRATOR,1);
-                        delay (300);
-                        digitalWrite(VIBRATOR,0);
-                    }
-                    delay (200);
-                }
-                if (timeCounter < 6){displayMode ++;}
-                if (displayMode > 2){displayMode = 1;}
-                timeCounter = 0;  
-            }  
-            delay(100);
+void hall_issue(){
+      display.clearDisplay();
+      display.setTextSize(2);
+      display.setCursor(20,0);
+      display.print("TRIGGER");
+      display.setCursor(30,20);
+      display.print("SENSOR");  
+      display.setCursor(35,40);
+      display.print("ERROR");                   
+      display.setCursor(0,65);
+      display.print("Restart"); 
+      display.setCursor(0,85);
+      display.print("and do the");       
+      display.setCursor(0,105);
+      display.print("procedure.");  
+      display.display();
+      while(true){
+          delay(100);
+          if(timerOff > 3000){ESP.deepSleep(0);}  
+          timerOff ++;
       }
-      EEPROM.put(20, displayMode);
-      EEPROM.commit();
+}
+
+void wait_trigger(){
+    read_throttle();
+    while(throttle < 50){
+        read_throttle();
+        delay(100);
+    }
+    check_trigger_off();
+}
+
+void check_trigger_off() {
+    while(throttle > 50){
+        read_throttle();
+        delay(100);
+    }
+}
+
+int check_trigger() {
+    uint32_t startTime = millis();
+    read_throttle();
+    if (throttle > 50) { 
+        while (throttle > 50) { 
+            read_throttle();
+            if (millis() - startTime >= 1200) { // 6*200ms → Long press
+                digitalWrite(VIBRATOR, 1);
+                digitalWrite(LED_BUILTIN,1); 
+                delay(300);
+                digitalWrite(VIBRATOR, 0);
+                digitalWrite(LED_BUILTIN,0);                
+                return 2;  // Long press
+            }
+        }
+        return 1;  // Short press
+    }
+    return 0; 
 }
 
 void selectBoost(){
