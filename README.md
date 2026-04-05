@@ -18,5 +18,5 @@ The receiver module generates a wifi hot spot where is possible to connect by a 
 
 The Lora module is optional in the receiver and transimetter. The firmware auto detect and use LoRa protocoll if the module is connected to the ESP. The trigger value from hall sensor could be sent by the LoRa channel in parallel to the ESP-NOW communication. LoRa transmition improves the performance of the transmition datas in the water
 
-Main project: www.foilassistproject.com
+Main project of entire electric hydrofoil system: www.foilassistproject.com
 
