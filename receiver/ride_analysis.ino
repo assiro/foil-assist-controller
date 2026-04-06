@@ -1,145 +1,319 @@
-void rideAnalysis(){
-    const int surfMinTime = 5; //seconds
-    const int fileMinTime = 10; //minutes
-//    recordEnable = false;
+// ============================================================
+//  ride_analysis.ino  –  Algoritmo migliorato v2
+//  Segnali usati: throttle, watts, rpm, rms, peak, tilt, pitch, roll
+// ============================================================
 
-    uint count = 0;
-    char rideFileName[20];
-    memset(rideFileName, 0, sizeof(rideFileName));
-    //takeOff
-    uint takeOffTreshold = 2000;
-    uint takeOff = 0;
-    uint consecutiveHighPower = 0;  
-    bool inTakeOff = false;  
-    String startTakeOffTime;  
-    bool falling = false;
-    //waves
-    uint wave = 0;
-    uint waveTime = 0; 
-    bool inWave = false;  
-    String startWaveTime;  
-    uint waveBestTime = 0;
-    uint oldWaveBestTime = 0;
+// ---- Soglie takeoff ----
+const int   TAKEOFF_WATTS_THR   = 1800;   // W minimi per contare come spinta
+const int   TAKEOFF_MIN_SAMPLES = 3;       // campioni consecutivi sopra soglia
 
-    oneTimeFlag = true;
-//     for(uint dataFile=0; dataFile<10; dataFile++){   //file number 0 - 9
-     uint dataFile=6; 
-        wave = 0;
-        waveBestTime = 0;
-        takeOff = 0;
-        count = 0;
-        itoa(dataFile, fileNameChar,10);
-        strcat(rideFileName, "/vescDat");
-        strcat(rideFileName, fileNameChar);
-        strcat(rideFileName, ".txt");
-        Serial.print("Analysis of file: ");
-        Serial.println(rideFileName);
+// ---- Soglie foil / surf ----
+const float FOIL_RMS_MIN        = 0.18f;  // g  – vibrazione minima su foil
+const float FOIL_PEAK_MIN       = 0.30f;  // g
+const float FOIL_TILT_MAX       = 25.0f;  // °  – tavola ragionevolmente dritta
+const float FOIL_ROLL_MAX       = 20.0f;  // °  – roll contenuto
+const float FOIL_PITCH_MAX      = 20.0f;  // °  – pitch contenuto
 
-        File file = SD.open(rideFileName);
-        if (!file) {
-            Serial.println("Errore apertura file");
-            return;
-        }
+// ---- Rilevamento caduta (fall) ----
+// Criteri: tilt alto OPPURE roll/pitch grandi e rms bassa (boardflat in acqua)
+const float FALL_TILT_THR       = 28.0f;  // ° – inclinazione da caduta
+const float FALL_ROLL_THR       = 25.0f;  // °
+const float FALL_PITCH_THR      = 25.0f;  // °
+const float FALL_RMS_LOW        = 0.12f;  // g – quasi fermo = immerso
+const int   FALL_CONFIRM_SAMP   = 2;      // campioni consecutivi per confermare
 
-        while (file.available()) {
-            String line = file.readStringUntil('\n');
-            VESCData data;
-            sscanf(line.c_str(), "%5s |R %d |V %f |I %f |M %f |W %d |TH %d%%", 
-                  data.time, &data.rpm, &data.voltage, &data.current,&data.Mcurrent, &data.watts, &data.throttle);
+// ---- Durata onda ----
+const int   SURF_MIN_SECONDS    = 6;      // scarta fasi brevissime
+const int   SURF_MAX_SECONDS    = 180;    // limite superiore (anomalia dati)
 
-            // Analisi Partenze - Controlla se la potenza supera 2000W
-            if (data.watts > takeOffTreshold) {
-                if (!inTakeOff) {
-                    startTakeOffTime = data.time;  // Memorizza il tempo di inizio
-                }
-                consecutiveHighPower++;
-                inTakeOff = true;
-            } else {
-                if (inTakeOff && consecutiveHighPower >= 3) {
-                      takeOff++;
-/*                      Serial.print("TakeOff #"); Serial.print(takeOff);
-                      int diff = timeDifference(startTakeOffTime, data.time);
-                      Serial.print(" - Durata: ");
-                      Serial.print(diff); 
-                      Serial.print(" - Inizio: "); Serial.print(startTakeOffTime);
-                      Serial.print(" | Fine: "); Serial.println(data.time);
-  */
-                }
-                consecutiveHighPower = 0;
-                inTakeOff = false;
-    //           if (falling){wave--;}
-                falling = false;
-            }
+// ============================================================
+//  Helper inline
+// ============================================================
 
-            // Analisi surfate - Controlla throttle a 0
-            if (data.throttle == 0) {
-                if (!inWave) {
-                    startWaveTime = data.time;  // Memorizza il tempo di inizio
-                }
-                waveTime++;
-                inWave = true;
-            } else {
-                if(inWave && waveTime > 5 && waveTime < 300) {  // limit to 5 min of possible pump or wave
-                    wave++;
-                    Serial.println("add wave more..");
-                    if(wave > 99){wave = 99;}  // limit - ERROR in the calc
-                    falling = true; 
-                    if(waveTime > waveBestTime){
-                          oldWaveBestTime = waveBestTime;
-                          waveBestTime = waveTime;
-                    }
-/*                   Serial.print("Wave #"); Serial.print(wave);
-                    int diff = timeDifference(startWaveTime, data.time);
-                    Serial.print(" - Durata: ");
-                    Serial.print(diff);                    
-                    Serial.print(" - Inizio: "); Serial.print(startWaveTime);
-                    Serial.print(" | Fine: "); Serial.println(data.time);
-*/ 
-                }
-                waveTime = 0;
-                inWave = false;
-            }
-            count++;       
-    //        Serial.print("Tempo: "); Serial.print(data.time);
-    //        Serial.print(" RPM: "); Serial.print(data.rpm);
-    //        Serial.print(" V: "); Serial.print(data.voltage);
-    //        Serial.print(" I: "); Serial.print(data.current);
-    //        Serial.print(" W: "); Serial.print(data.watts);
-    //        Serial.print(" TH: "); Serial.println(data.throttle);
-        }
-        file.close();
-        if (count > 0) {
-          //  wave = wave - takeOff;
-/**/            Serial.print("Numero partenze: ");
-            Serial.print(takeOff);    
-            Serial.print(" - Numero onde: ");
-            Serial.println(wave);         
-            Serial.print("Miglior tempo su Onda: ");
-            Serial.print(waveBestTime);       
-            Serial.print(" secondi # ");
-            Serial.print("Numero righe analizzate: ");
-            Serial.println(count);    
-            
-            memset(rideFileName, 0, sizeof(rideFileName));
-            data.takeOff = takeOff;
-            data.wave = wave;
-            data.waveBestTime = waveBestTime;
-            data.rideNumber = dataFile+1;
+// Ritorna true se la postura è da foil (tavola dritta, movimento presente)
+static inline bool isFoilRiding(float rms, float peak,
+                                 float tilt, float pitch, float roll)
+{
+    if (!accelerometerConnected) return true;   // fallback senza ADXL
 
-        } else {
-            Serial.println("Nessun dato disponibile per il calcolo della media.");
-        }
-        delay(100); 
-   // }
-    Serial.println("-------- FINE ANALISI DATI --------");
+    bool motionOk  = (rms  >= FOIL_RMS_MIN  || peak  >= FOIL_PEAK_MIN);
+    bool postureOk = (fabsf(tilt)  <= FOIL_TILT_MAX  &&
+                      fabsf(pitch) <= FOIL_PITCH_MAX  &&
+                      fabsf(roll)  <= FOIL_ROLL_MAX);
+    return motionOk && postureOk;
 }
 
-/**/
-int timeDifference(String time1, String time2) {
-    int min1, sec1, min2, sec2;
-    sscanf(time1.c_str(), "%d:%d", &min1, &sec1);
-    sscanf(time2.c_str(), "%d:%d", &min2, &sec2);
-    int totalSec1 = min1 * 60 + sec1;
-    int totalSec2 = min2 * 60 + sec2;
-    return abs(totalSec1 - totalSec2);
+// Ritorna true se questo campione indica una caduta
+static inline bool isFallSample(float rms, float tilt,
+                                 float pitch, float roll)
+{
+    if (!accelerometerConnected) return false;
+
+    bool tiltCrash  = fabsf(tilt)  > FALL_TILT_THR;
+    bool rollCrash  = fabsf(roll)  > FALL_ROLL_THR;
+    bool pitchCrash = fabsf(pitch) > FALL_PITCH_THR;
+    bool stillInWater = (rms < FALL_RMS_LOW);
+
+    // Caduta = grande inclinazione  OPPURE  sbilanciato + fermo
+    return tiltCrash || rollCrash || pitchCrash || stillInWater;
+}
+
+// ============================================================
+//  rideAnalysis  –  versione con accelerometro completo
+// ============================================================
+void rideAnalysis()
+{
+    takeOff = wave = waveBestTime = 0;
+
+    uint  count               = 0;
+    uint  consecutiveHighPow  = 0;
+    uint  waveTime            = 0;
+    uint  fallSamples         = 0;
+
+    bool  inTakeOff    = false;
+    bool  inWave       = false;
+    bool  afterTakeOff = false;
+    bool  inFall       = false;
+
+    String startTakeOffTime, startWaveTime;
+
+    char rideFileName[32];
+    snprintf(rideFileName, sizeof(rideFileName), "/vescDat%u.txt", fileName);
+
+    File file = LittleFS.open(rideFileName, "r");
+    if (!file) {
+        Serial.printf("Errore apertura %s\n", rideFileName);
+        return;
+    }
+
+    while (file.available())
+    {
+        String line = file.readStringUntil('\n');
+        if (line.length() < 10) continue;
+
+        // ---- Parsing riga ----
+        struct {
+            char  time[6];
+            int   rpm;
+            float voltage;
+            int   current;
+            int   watts;
+            int   throttle;
+            int   battery;
+            int   wh;
+            float temperature;
+            int   powerAvg;
+            float rms;
+            float peak;
+            float tilt;
+            float pitch;
+            float roll;
+        } row;
+
+        int parsed = sscanf(line.c_str(),
+            "%5[^,],%d,%f,%d,%d,%d,%d,%d,%f,%d,%f,%f,%f,%f,%f",
+            row.time, &row.rpm, &row.voltage, &row.current, &row.watts,
+            &row.throttle, &row.battery, &row.wh, &row.temperature,
+            &row.powerAvg, &row.rms, &row.peak,
+            &row.tilt, &row.pitch, &row.roll);
+
+        if (parsed < 12) {
+            // Se mancano tilt/pitch/roll usa valori neutri
+            if (parsed < 12) continue;
+        }
+        // Se parsed==12 (vecchio formato senza IMU) usa zero per angoli
+        if (parsed == 12) {
+            row.tilt = row.pitch = row.roll = 0.0f;
+        }
+
+        // ================================================================
+        //  1. RILEVAMENTO CADUTA
+        //     Deve essere valutato PRIMA della logica onda per poter
+        //     interrompere correttamente la fase di surf.
+        // ================================================================
+        bool fallNow = isFallSample(row.rms, row.tilt, row.pitch, row.roll);
+
+        if (fallNow) {
+            fallSamples++;
+            if (fallSamples >= FALL_CONFIRM_SAMP) inFall = true;
+        } else {
+            fallSamples = 0;
+            inFall      = false;
+        }
+
+        // ================================================================
+        //  2. RILEVAMENTO TAKEOFF
+        //     Alta potenza + throttle > minimo per ≥ N campioni consecutivi
+        // ================================================================
+        bool highPower = (row.watts > TAKEOFF_WATTS_THR &&
+                          row.throttle > 10);
+
+        if (highPower) {
+            if (!inTakeOff) {
+                startTakeOffTime = row.time;
+            }
+            consecutiveHighPow++;
+            inTakeOff    = true;
+            afterTakeOff = true;   // abilita il conteggio onde
+            // Se eravamo in un'onda, la interrompiamo (nuovo takeoff)
+            if (inWave) {
+                if (!inFall && waveTime >= (uint)SURF_MIN_SECONDS &&
+                               waveTime <= (uint)SURF_MAX_SECONDS) {
+                    wave++;
+                    if (waveTime > waveBestTime) {
+                        waveBestTime = waveTime;
+                        riderAlert   = true;
+                    }
+                }
+                inWave   = false;
+                waveTime = 0;
+            }
+        } else {
+            if (inTakeOff && consecutiveHighPow >= (uint)TAKEOFF_MIN_SAMPLES) {
+                takeOff++;
+            }
+            consecutiveHighPow = 0;
+            inTakeOff          = false;
+        }
+
+        // ================================================================
+        //  3. RILEVAMENTO FASE FOIL / SURF (motore spento dopo un takeoff)
+        //
+        //  Condizioni per stare "in onda":
+        //    a) motore spento (throttle basso e watts~0)
+        //    b) siamo dopo almeno un takeoff
+        //    c) postura da foil (tilt/roll/pitch contenuti)
+        //    d) movimento rilevato da rms/peak
+        //    e) NON in caduta confermata
+        // ================================================================
+        bool motorOff    = (row.throttle <= 5 && row.watts < 50);
+        bool foilPosture = isFoilRiding(row.rms, row.peak,
+                                         row.tilt, row.pitch, row.roll);
+        bool surfing     = afterTakeOff && motorOff && foilPosture && !inFall;
+
+        if (surfing) {
+            if (!inWave) {
+                startWaveTime = row.time;
+            }
+            inWave = true;
+            waveTime++;
+        } else {
+            // Fine fase surf: valida solo se non caduta e durata OK
+            if (inWave) {
+                if (!inFall &&
+                    waveTime >= (uint)SURF_MIN_SECONDS &&
+                    waveTime <= (uint)SURF_MAX_SECONDS)
+                {
+                    wave++;
+                    if (waveTime > waveBestTime) {
+                        waveBestTime = waveTime;
+                        riderAlert   = true;
+                    }
+                }
+                inWave   = false;
+                waveTime = 0;
+            }
+        }
+
+        count++;
+    }
+
+    // Chiudi eventuale onda rimasta aperta alla fine del file
+    if (inWave && !inFall &&
+        waveTime >= (uint)SURF_MIN_SECONDS &&
+        waveTime <= (uint)SURF_MAX_SECONDS)
+    {
+        wave++;
+        if (waveTime > waveBestTime) {
+            waveBestTime = waveTime;
+            riderAlert   = true;
+        }
+    }
+
+    file.close();
+
+    if (count > 0) {
+        Serial.printf(
+            "File %u | Takeoffs: %u | Sessioni foil: %u | Best: %u s | Righe: %u\n",
+            fileName, takeOff, wave, waveBestTime, count);
+    } else {
+        Serial.printf("File %u – vuoto o non valido\n", fileName);
+    }
+}
+
+
+// ============================================================
+//  rideAnalysisNoADXL  –  fallback senza accelerometro (invariato)
+// ============================================================
+void rideAnalysisNoADXL()
+{
+    const int takeOffThreshold  = 1800;
+    const int minTakeOffSamples = 3;
+
+    takeOff = wave = waveBestTime = 0;
+    uint count = 0, consecutiveHighPower = 0, waveTime = 0;
+    bool inTakeOff = false, inWave = false, afterTakeOff = false;
+
+    char rideFileName[32];
+    snprintf(rideFileName, sizeof(rideFileName), "/vescDat%u.txt", fileName);
+
+    File file = LittleFS.open(rideFileName, "r");
+    if (!file) return;
+
+    while (file.available()) {
+        String line = file.readStringUntil('\n');
+        if (line.length() < 5) continue;
+
+        struct {
+            char  time[6];
+            int   rpm;
+            float voltage;
+            int   current;
+            int   watts;
+            int   throttle;
+            int   battery;
+            int   wh;
+            float temperature;
+            int   powerAvg;
+        } row;
+
+        int parsed = sscanf(line.c_str(),
+            "%5[^,],%d,%f,%d,%d,%d,%d,%d,%f,%d",
+            row.time, &row.rpm, &row.voltage, &row.current, &row.watts,
+            &row.throttle, &row.battery, &row.wh, &row.temperature, &row.powerAvg);
+        if (parsed != 10) continue;
+
+        if (row.watts > takeOffThreshold && row.throttle > 10) {
+            if (!inTakeOff) afterTakeOff = true;
+            consecutiveHighPower++;
+            inTakeOff = true;
+        } else {
+            if (inTakeOff && consecutiveHighPower >= (uint)minTakeOffSamples)
+                takeOff++;
+            consecutiveHighPower = 0;
+            inTakeOff = false;
+        }
+
+        if (row.throttle == 0 && afterTakeOff) {
+            if (!inWave) {}
+            inWave = true;
+            waveTime++;
+        } else {
+            if (inWave && waveTime >= (uint)SURF_MIN_SECONDS &&
+                          waveTime <= (uint)SURF_MAX_SECONDS) {
+                wave++;
+                if (waveTime > waveBestTime) waveBestTime = waveTime;
+            }
+            waveTime = 0;
+            inWave   = false;
+        }
+        count++;
+    }
+    file.close();
+
+    if (count > 0)
+        Serial.printf("File %u | Takeoffs: %u | Sessioni: %u | Best: %u s\n",
+                      fileName, takeOff, wave, waveBestTime);
+    else
+        Serial.printf("File %u – vuoto\n", fileName);
 }
