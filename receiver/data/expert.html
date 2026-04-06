@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TecnoFly – Expert Tools</title>
+    <link href="assist.css" rel="stylesheet" type="text/css">
+    <script src="jquery.js"></script>
+    <style>
+      .switch {
+        position: relative;
+        display: inline-block;
+        width: 60px;
+        height: 34px;
+      }
+      .switch input { opacity: 0; width: 0; height: 0; }
+      .slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background-color: #374151;
+        transition: .4s;
+        border-radius: 34px;
+      }
+      .slider:before {
+        position: absolute;
+        content: "";
+        height: 26px;
+        width: 26px;
+        left: 4px;
+        bottom: 4px;
+        background-color: white;
+        transition: .4s;
+        border-radius: 50%;
+      }
+      input:checked + .slider { background-color: #0ea5e9; }
+      input:checked + .slider:before { transform: translateX(26px); }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+      }
+      th, td {
+        padding: 8px;
+        font-size: 0.85rem;
+      }
+    </style>
+</head>
+<body>
+
+    <!-- HEADER -->
+    <header class="header">
+        <img src="tecnofly_logo.gif" alt="TecnoFly">
+        <h1 class="page-title">Foil Assist – Expert Page</h1>
+    </header>
+
+    <!-- LIFE COUNTER -->
+    <section class="card">
+        <button class="button" id="lifeReset">Reset life counter</button>
+        <br><br>
+        <h2>Total rides of the system: <b id="lifeCounter">...</b></h2>
+    </section>
+
+    <!-- AUTO SAFETY LOCK -->
+    <section class="card">
+        <h2>Auto Safety Lock (gravity sensor)</h2>
+        <p>Gravity sensor allows to disable the trigger when the board is not in correct position automatically.</p>
+        <label class="switch">
+            <input type="checkbox" id="autoLockSwitch">
+            <span class="slider"></span>
+        </label>
+        <p>State: <b id="autoLockState">...</b></p>
+        <h4>Angle threshold to stop the motor</h4>
+        <select id="degrees">
+            <option value="0">0° (disabled)</option>
+            <option value="15">15°</option>
+            <option value="20">20°</option>
+            <option value="25">25°</option>
+            <option value="30">30°</option>
+            <option value="35">35°</option>
+            <option value="40">40°</option>
+            <option value="45">45°</option>
+            <option value="50">50°</option>
+            <option value="55">55°</option>
+        </select>
+    </section>
+
+    <!-- BOARD CODE -->
+    <section class="card">
+        <h2>Board radio code</h2>
+        <p><b>Board code number for radio communication with remote controller</b></p>
+		<h3>Current receiver code is: <b id="rx_number"></b></h3>
+        <form action="/setCode">
+            <p>New manual code:</p>
+            <input type="text" id="number" name="number" maxlength="5">
+            <br><br>
+            <input type="submit" value="Store Code Number" class="button">
+        </form>
+        <hr>
+        <button class="button" id="coding">Random Receiver Code</button>
+        <p>Changes receiver transmission code randomly (use only if needed).</p>
+        <hr>
+        
+    </section>
+
+    <!-- FIRMWARE UPGRADE -->
+    <section class="card">
+        <h2>Firmware upgrade</h2>
+        <p><button class="button" id="upgrade">Upgrade firmware from server</button></p>
+        <br>
+        <p><button class="button" onclick="window.location.href='/update'">Upgrade firmware from file</button></p>
+    </section>
+
+    <!-- RIDES DATA FILES -->
+    <section class="card">
+        <h2>Rides data files</h2>
+        <p><button class="button" onclick="downloadFiles()">Download all rides (TXT)</button></p>
+        <p><button class="button" onclick="downloadJson()">Download all rides (JSON)</button></p>
+    </section>
+
+    <!-- FLASH MEMORY INFO & FILE OPS -->
+    <section class="card">
+        <h2>ESP32 flash memory (LittleFS)</h2>
+        <p><strong>Total:</strong> <span id="total"></span> bytes</p>
+        <p><strong>Used:</strong> <span id="used"></span> bytes</p>
+        <p><strong>Free:</strong> <span id="free"></span> bytes</p>
+        <hr>
+        <h4>Upload file to filesystem</h4>
+        <input type="file" id="fileInput">
+        <br><br>
+        <button class="button" onclick="uploadFile()">Upload File</button>
+        <br><br>
+        <h4>Delete file from filesystem</h4>
+        <input type="text" id="filename" placeholder="es. vescDat0.txt">
+        <button class="button" onclick="deleteFile()">Delete File</button>
+        <p id="result"></p>
+        <hr>
+        <h4>File list</h4>
+        <table>
+            <thead>
+                <tr>
+                    <th>File Name</th>
+                    <th>Size (byte)</th>
+                </tr>
+            </thead>
+            <tbody id="fileTable"></tbody>
+        </table>
+    </section>
+
+    <!-- ACCELEROMETER & REBOOT -->
+    <section class="card">
+        <h2>Accelerometer status</h2>
+        <p>On this device the accelerometer sensor is <b id="adxl345"></b></p>
+    </section>
+
+    <section class="card">
+        <button class="button" id="reboot">Reboot receiver board</button>
+    </section>
+
+    <!-- BACK HOME -->
+    <section class="card">
+        <button class="button" onclick="window.location.href='/index.html'">Back home</button>
+		<br><br>
+		<button class="button" onclick="window.location.href='test.html'">Sensors Data Monitor</button>	
+    </section>
+
+    <!-- FOOTER -->
+    <footer>
+        <p>Written by Roberto Assiro – Firmware Ver. <b id="version"></b></p>
+        <p>– TecnoFly 2026 –</p>
+    </footer>
+
+    <script type="text/javascript">
+    // RIDES COUNTER
+    document.addEventListener("DOMContentLoaded", function() {
+        fetch("/lifeCounter")
+          .then(res => res.text())
+          .then(val => {
+              document.getElementById("lifeCounter").textContent = val.trim();
+          })
+          .catch(err => {
+              console.error("Error to read rides counter:", err);
+              document.getElementById("lifeCounter").textContent = "N/A";
+          });
+    });
+
+    // TOGGLE SWITCH AUTOLOCK
+    document.addEventListener("DOMContentLoaded", function() {
+        const switchEl  = document.getElementById("autoLockSwitch");
+        const stateText = document.getElementById("autoLockState");
+        const degreesEl = document.getElementById("degrees");
+
+        fetch("/readAutolock")
+            .then(res => res.text())
+            .then(val => {
+                val = parseInt(val.trim());
+                if (val > 0) {
+                    switchEl.checked = true;
+                    stateText.textContent = "Active";
+                    degreesEl.value = val;
+                } else {
+                    switchEl.checked = false;
+                    stateText.textContent = "Disabled";
+                    degreesEl.value = "0";
+                }
+            });
+
+        switchEl.addEventListener("change", function() {
+            let newVal;
+            if (switchEl.checked) {
+                newVal = 45;
+                degreesEl.value = "45";
+                stateText.textContent = "Active";
+            } else {
+                newVal = 0;
+                degreesEl.value = "0";
+                stateText.textContent = "Disabled";
+            }
+            fetch(`/autolock?number=${newVal}`);
+        });
+
+        degreesEl.addEventListener("change", function() {
+            if (switchEl.checked) {
+                let newVal = degreesEl.value;
+                fetch(`/autolock?number=${newVal}`);
+            }
+        });
+    });
+
+    function downloadFiles() {
+        for (let i = 0; i < 10; i++) {
+            let fileName = `vescDat${i}.txt`;
+            let link = document.createElement("a");
+            link.href = fileName;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    }
+
+    function downloadJson() {
+        for (let i = 0; i < 10; i++) {
+            let fileName = `ride${i}.json`;
+            let link = document.createElement("a");
+            link.href = fileName;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    }
+
+    $(document).ready(function() {
+        $("#setCode").on('change', function(e) {
+            e.preventDefault();
+            $.get("/setCode?number=" + $("#serial").val(), function () {
+                console.log("Serial Number changed");
+            });
+            alert("Serial Number changed");
+        });
+
+        $("#upgrade").on('click', function(e) {
+            e.preventDefault();
+            $.get("/upgrade", function () {
+                console.log("Upgrade initiated");
+            });
+            alert("Before clicking, the WiFi hotspot TecnoFly must be active");
+        });
+
+        $("#coding").on('click', function(e) {
+            e.preventDefault();
+            $.get("/boardCode", function () {
+                console.log("Random coding the receiver ");
+            });
+            alert("It requires to pairing the remote controller");
+        });
+
+        $("#lifeReset").on('click', function(e) {
+            e.preventDefault();
+            $.get("/lifeReset", function () {
+                console.log("Resetting counter...");
+            });
+            alert("Resetting counter...");
+        });
+
+        $("#reboot").on('click', function(e) {
+            e.preventDefault();
+            $.get("/reset", function () {
+                console.log("Resetting receiver board...");
+            });
+            alert("Resetting receiver board...");
+        });
+
+        function fetchData(url, elementId) {
+            $.get(url, function(data) {
+                $("#" + elementId).text(data);
+            });
+        }
+
+        fetchData("/ver", "version");
+        fetchData("/rx_number", "rx_number");
+        fetchData("/checkAdxl", "adxl345");
+    });
+
+    function uploadFile() {
+        var fileInput = document.getElementById("fileInput").files[0];
+        if (!fileInput) {
+            alert("Select a file first.");
+            return;
+        }
+        var formData = new FormData();
+        formData.append("file", fileInput);
+        fetch("/upload", { method: "POST", body: formData })
+            .then(response => response.text())
+            .then(result => {
+                alert("Upload done!");
+                fetchFiles();
+            })
+            .catch(error => console.error("Error:", error));
+    }
+
+    function fetchFiles() {
+        fetch("/list")
+            .then(response => response.json())
+            .then(data => {
+                let table = document.getElementById("fileTable");
+                table.innerHTML = "";
+                data.files.forEach(file => {
+                    let row = `<tr><td>${file.name}</td><td>${file.size}</td></tr>`;
+                    table.innerHTML += row;
+                });
+            })
+            .catch(error => console.error("Errore nel recupero file:", error));
+    }
+
+    window.onload = function() {
+        fetchFiles();
+        fetch('/meminfo')
+          .then(response => response.json())
+          .then(data => {
+            document.getElementById('total').textContent = data.total;
+            document.getElementById('used').textContent = data.used;
+            document.getElementById('free').textContent = data.free;
+          });
+    };
+
+    function deleteFile() {
+        let fileName = document.getElementById("filename").value.trim();
+        if (fileName === "") {
+            document.getElementById("result").innerText = "Input file name!";
+            return;
+        }
+
+        fetch(`/delete?file=${encodeURIComponent(fileName)}`, { method: "DELETE" })
+            .then(response => response.text())
+            .then(data => {
+                document.getElementById("result").innerText = data;
+                fetchFiles();
+            })
+            .catch(error => {
+                document.getElementById("result").innerText = "Errore request!";
+            });
+    }
+    </script>
+</body>
+</html>

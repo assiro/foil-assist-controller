@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TecnoFly – Foil Assist Dashboard</title>
+    <link href="assist.css" rel="stylesheet" type="text/css">
+    <script src="jquery.js"></script>
+    <script src="rideAnalysis.js"></script>
+
+    <script type="text/javascript">
+        // ── Data fetch per le card di riepilogo ─────────────────
+        $(document).ready(function () {
+            for (let i = 0; i < 10; i++) {
+                $.getJSON(`ride?number=${i}`, function (data) {
+                    if (!data) return;
+                    data.powerIndex = data.powerIndex / 10;
+                    const n = i + 1;
+                    document.getElementById(`Tminutes${n}`).innerHTML     = data.Tminutes;
+                    document.getElementById(`Tseconds${n}`).innerHTML     = data.Tseconds;
+                    document.getElementById(`maxPower${n}`).innerHTML     = data.maxPower.toFixed(0);
+                    document.getElementById(`minVoltage${n}`).innerHTML   = data.minVoltage.toFixed(1);
+                    document.getElementById(`maxCurrent${n}`).innerHTML   = data.maxCurrent.toFixed(1);
+                    document.getElementById(`maxTemp${n}`).innerHTML      = data.maxTemp.toFixed(1);
+                    document.getElementById(`powerAverage${n}`).innerHTML = data.powerAverage;
+                    document.getElementById(`powerIndex${n}`).innerHTML   = data.powerIndex.toFixed(1);
+                    document.getElementById(`watthour${n}`).innerHTML     = data.watthour.toFixed(1);
+                    document.getElementById(`Mminutes${n}`).innerHTML     = data.Mminutes;
+                    document.getElementById(`Mseconds${n}`).innerHTML     = data.Mseconds;
+                });
+            }
+            fetchDatas("/rx_number", "rx_number");
+            fetchData("/ver",        "version");
+            fetchData2("/fileNumber","number");
+        });
+
+        function fetchData(url, id) {
+            const x = new XMLHttpRequest();
+            x.onreadystatechange = function () {
+                if (this.readyState === 4 && this.status === 200)
+                    document.getElementById(id).innerHTML = this.responseText;
+            };
+            x.open("GET", url, true); x.send();
+        }
+        function fetchData2(url, id) {
+            const x = new XMLHttpRequest();
+            x.onreadystatechange = function () {
+                if (this.readyState === 4 && this.status === 200) {
+                    const v = parseInt(this.responseText);
+                    if (!isNaN(v)) document.getElementById(id).innerHTML = v + 1;
+                }
+            };
+            x.open("GET", url, true); x.send();
+        }
+        function fetchDatas(url, id) { $.get(url, d => $("#" + id).text(d)); }
+
+        // ── Analisi di tutte le sessioni (usa rideAnalysis.js) ──
+        async function rideAnalysis() {
+            const reportBody = document.getElementById("reportBody");
+            reportBody.innerHTML = "<tr><td colspan='4'>Analyzing rides, please wait…</td></tr>";
+
+            // Rileva stato accelerometro via endpoint /checkAdxl
+            let hasAdxl = true;
+            try {
+                const r = await fetch("/checkAdxl");
+                if (r.ok) {
+                    const txt = (await r.text()).trim().toLowerCase();
+                    hasAdxl = txt !== "not present";
+                }
+            } catch (_) { /* se non risponde, assume presente */ }
+
+            let firstRow = true;
+
+            for (let i = 0; i < 10; i++) {
+                try {
+                    const r = await fetchAndAnalyze(i, hasAdxl);
+
+                    if (firstRow) { reportBody.innerHTML = ""; firstRow = false; }
+
+                    addSummaryRow(`Ride ${i + 1}`, "TakeOffs",        r.takeoffs.length, i);
+                    addSummaryRow(`Ride ${i + 1}`, "Foil sessions",   r.foils.length,    i);
+                    addSummaryRow(`Ride ${i + 1}`, "Best foil time",  r.waveBestTime + " s", i, "best-wave");
+
+                } catch (_) {
+                    if (firstRow) { reportBody.innerHTML = ""; firstRow = false; }
+                    addSummaryRow(`Ride ${i + 1}`, "—", "no file", i);
+                }
+            }
+
+            if (firstRow) {
+                reportBody.innerHTML = "<tr><td colspan='4'>No ride files found.</td></tr>";
+            }
+        }
+
+        function addSummaryRow(ride, type, count, rideIdx, cls) {
+            const tr = document.createElement("tr");
+            if (cls) tr.className = cls;
+
+            [ride, type, count].forEach(v => {
+                const td = document.createElement("td");
+                td.textContent = v !== undefined ? v : "-";
+                tr.appendChild(td);
+            });
+
+            // colonna link → ride.html
+            const tdLink = document.createElement("td");
+            const a = document.createElement("a");
+            a.href      = `ride.html?ride=${rideIdx}`;
+            a.textContent = "View »";
+            tdLink.appendChild(a);
+            tr.appendChild(tdLink);
+
+            document.getElementById("reportBody").appendChild(tr);
+        }
+    </script>
+</head>
+<body>
+
+    <!-- HEADER -->
+    <header class="header">
+        <img src="tecnofly_logo.gif" alt="TecnoFly">
+        <h1 class="page-title">Foil Assist System code: <b id="rx_number"></b></h1>
+    </header>
+
+    <!-- LAST RIDE INFO -->
+    <section class="card">
+        <h3>Last Ride</h3>
+        <p>Ride number: <b id="number"></b> of 10 stored sessions</p>
+    </section>
+
+    <!-- RIDES GRID -->
+    <section class="ride-container" aria-label="Rides summary">
+
+        <!-- Ride 1 -->
+        <article class="ride-card">
+            <h5>Ride Time: <b id="Tminutes1"></b>:<b id="Tseconds1"></b></h5>
+            <h5>Motoring Time: <b id="Mminutes1"></b>:<b id="Mseconds1"></b></h5>
+            <h5>Max Power: <b id="maxPower1"></b> W</h5>
+            <h5>Min Voltage: <b id="minVoltage1"></b> V</h5>
+            <h5>Max Current: <b id="maxCurrent1"></b> A</h5>
+            <h5>Max Temp: <b id="maxTemp1"></b> °C</h5>
+            <h5>Power Avg: <b id="powerAverage1"></b> W</h5>
+            <h5>Power Batt: <b id="watthour1"></b> Wh</h5>
+            <h5>Rider Vote: <b id="powerIndex1"></b> (0–10)</h5>
+            <button class="button" onclick="window.location.href='ride.html?ride=0'">View Ride 1</button>
+        </article>
+
+        <!-- Ride 2 -->
+        <article class="ride-card">
+            <h5>Ride Time: <b id="Tminutes2"></b>:<b id="Tseconds2"></b></h5>
+            <h5>Motoring Time: <b id="Mminutes2"></b>:<b id="Mseconds2"></b></h5>
+            <h5>Max Power: <b id="maxPower2"></b> W</h5>
+            <h5>Min Voltage: <b id="minVoltage2"></b> V</h5>
+            <h5>Max Current: <b id="maxCurrent2"></b> A</h5>
+            <h5>Max Temp: <b id="maxTemp2"></b> °C</h5>
+            <h5>Power Avg: <b id="powerAverage2"></b> W</h5>
+            <h5>Power Batt: <b id="watthour2"></b> Wh</h5>
+            <h5>Rider Vote: <b id="powerIndex2"></b> (0–10)</h5>
+            <button class="button" onclick="window.location.href='ride.html?ride=1'">View Ride 2</button>
+        </article>
+
+        <!-- Ride 3 -->
+        <article class="ride-card">
+            <h5>Ride Time: <b id="Tminutes3"></b>:<b id="Tseconds3"></b></h5>
+            <h5>Motoring Time: <b id="Mminutes3"></b>:<b id="Mseconds3"></b></h5>
+            <h5>Max Power: <b id="maxPower3"></b> W</h5>
+            <h5>Min Voltage: <b id="minVoltage3"></b> V</h5>
+            <h5>Max Current: <b id="maxCurrent3"></b> A</h5>
+            <h5>Max Temp: <b id="maxTemp3"></b> °C</h5>
+            <h5>Power Avg: <b id="powerAverage3"></b> W</h5>
+            <h5>Power Batt: <b id="watthour3"></b> Wh</h5>
+            <h5>Rider Vote: <b id="powerIndex3"></b> (0–10)</h5>
+            <button class="button" onclick="window.location.href='ride.html?ride=2'">View Ride 3</button>
+        </article>
+
+        <!-- Ride 4 -->
+        <article class="ride-card">
+            <h5>Ride Time: <b id="Tminutes4"></b>:<b id="Tseconds4"></b></h5>
+            <h5>Motoring Time: <b id="Mminutes4"></b>:<b id="Mseconds4"></b></h5>
+            <h5>Max Power: <b id="maxPower4"></b> W</h5>
+            <h5>Min Voltage: <b id="minVoltage4"></b> V</h5>
+            <h5>Max Current: <b id="maxCurrent4"></b> A</h5>
+            <h5>Max Temp: <b id="maxTemp4"></b> °C</h5>
+            <h5>Power Avg: <b id="powerAverage4"></b> W</h5>
+            <h5>Power Batt: <b id="watthour4"></b> Wh</h5>
+            <h5>Rider Vote: <b id="powerIndex4"></b> (0–10)</h5>
+            <button class="button" onclick="window.location.href='ride.html?ride=3'">View Ride 4</button>
+        </article>
+
+        <!-- Ride 5 -->
+        <article class="ride-card">
+            <h5>Ride Time: <b id="Tminutes5"></b>:<b id="Tseconds5"></b></h5>
+            <h5>Motoring Time: <b id="Mminutes5"></b>:<b id="Mseconds5"></b></h5>
+            <h5>Max Power: <b id="maxPower5"></b> W</h5>
+            <h5>Min Voltage: <b id="minVoltage5"></b> V</h5>
+            <h5>Max Current: <b id="maxCurrent5"></b> A</h5>
+            <h5>Max Temp: <b id="maxTemp5"></b> °C</h5>
+            <h5>Power Avg: <b id="powerAverage5"></b> W</h5>
+            <h5>Power Batt: <b id="watthour5"></b> Wh</h5>
+            <h5>Rider Vote: <b id="powerIndex5"></b> (0–10)</h5>
+            <button class="button" onclick="window.location.href='ride.html?ride=4'">View Ride 5</button>
+        </article>
+
+        <!-- Ride 6 -->
+        <article class="ride-card">
+            <h5>Ride Time: <b id="Tminutes6"></b>:<b id="Tseconds6"></b></h5>
+            <h5>Motoring Time: <b id="Mminutes6"></b>:<b id="Mseconds6"></b></h5>
+            <h5>Max Power: <b id="maxPower6"></b> W</h5>
+            <h5>Min Voltage: <b id="minVoltage6"></b> V</h5>
+            <h5>Max Current: <b id="maxCurrent6"></b> A</h5>
+            <h5>Max Temp: <b id="maxTemp6"></b> °C</h5>
+            <h5>Power Avg: <b id="powerAverage6"></b> W</h5>
+            <h5>Power Batt: <b id="watthour6"></b> Wh</h5>
+            <h5>Rider Vote: <b id="powerIndex6"></b> (0–10)</h5>
+            <button class="button" onclick="window.location.href='ride.html?ride=5'">View Ride 6</button>
+        </article>
+
+        <!-- Ride 7 -->
+        <article class="ride-card">
+            <h5>Ride Time: <b id="Tminutes7"></b>:<b id="Tseconds7"></b></h5>
+            <h5>Motoring Time: <b id="Mminutes7"></b>:<b id="Mseconds7"></b></h5>
+            <h5>Max Power: <b id="maxPower7"></b> W</h5>
+            <h5>Min Voltage: <b id="minVoltage7"></b> V</h5>
+            <h5>Max Current: <b id="maxCurrent7"></b> A</h5>
+            <h5>Max Temp: <b id="maxTemp7"></b> °C</h5>
+            <h5>Power Avg: <b id="powerAverage7"></b> W</h5>
+            <h5>Power Batt: <b id="watthour7"></b> Wh</h5>
+            <h5>Rider Vote: <b id="powerIndex7"></b> (0–10)</h5>
+            <button class="button" onclick="window.location.href='ride.html?ride=6'">View Ride 7</button>
+        </article>
+
+        <!-- Ride 8 -->
+        <article class="ride-card">
+            <h5>Ride Time: <b id="Tminutes8"></b>:<b id="Tseconds8"></b></h5>
+            <h5>Motoring Time: <b id="Mminutes8"></b>:<b id="Mseconds8"></b></h5>
+            <h5>Max Power: <b id="maxPower8"></b> W</h5>
+            <h5>Min Voltage: <b id="minVoltage8"></b> V</h5>
+            <h5>Max Current: <b id="maxCurrent8"></b> A</h5>
+            <h5>Max Temp: <b id="maxTemp8"></b> °C</h5>
+            <h5>Power Avg: <b id="powerAverage8"></b> W</h5>
+            <h5>Power Batt: <b id="watthour8"></b> Wh</h5>
+            <h5>Rider Vote: <b id="powerIndex8"></b> (0–10)</h5>
+            <button class="button" onclick="window.location.href='ride.html?ride=7'">View Ride 8</button>
+        </article>
+
+        <!-- Ride 9 -->
+        <article class="ride-card">
+            <h5>Ride Time: <b id="Tminutes9"></b>:<b id="Tseconds9"></b></h5>
+            <h5>Motoring Time: <b id="Mminutes9"></b>:<b id="Mseconds9"></b></h5>
+            <h5>Max Power: <b id="maxPower9"></b> W</h5>
+            <h5>Min Voltage: <b id="minVoltage9"></b> V</h5>
+            <h5>Max Current: <b id="maxCurrent9"></b> A</h5>
+            <h5>Max Temp: <b id="maxTemp9"></b> °C</h5>
+            <h5>Power Avg: <b id="powerAverage9"></b> W</h5>
+            <h5>Power Batt: <b id="watthour9"></b> Wh</h5>
+            <h5>Rider Vote: <b id="powerIndex9"></b> (0–10)</h5>
+            <button class="button" onclick="window.location.href='ride.html?ride=8'">View Ride 9</button>
+        </article>
+
+        <!-- Ride 10 -->
+        <article class="ride-card">
+            <h5>Ride Time: <b id="Tminutes10"></b>:<b id="Tseconds10"></b></h5>
+            <h5>Motoring Time: <b id="Mminutes10"></b>:<b id="Mseconds10"></b></h5>
+            <h5>Max Power: <b id="maxPower10"></b> W</h5>
+            <h5>Min Voltage: <b id="minVoltage10"></b> V</h5>
+            <h5>Max Current: <b id="maxCurrent10"></b> A</h5>
+            <h5>Max Temp: <b id="maxTemp10"></b> °C</h5>
+            <h5>Power Avg: <b id="powerAverage10"></b> W</h5>
+            <h5>Power Batt: <b id="watthour10"></b> Wh</h5>
+            <h5>Rider Vote: <b id="powerIndex10"></b> (0–10)</h5>
+            <button class="button" onclick="window.location.href='ride.html?ride=9'">View Ride 10</button>
+        </article>
+
+    </section>
+
+    <!-- MENU -->
+    <section class="card">
+        <h3>System pages</h3>
+        <p>
+            <button class="button" onclick="window.location.href='setup.html'">Settings</button>
+			<br><br>
+            <button class="button" onclick="window.location.href='test.html'">Sensors Data Monitor</button>
+        </p>
+    </section>
+
+    <!-- ANALYSIS -->
+    <section class="card">
+        <h2>Rides analysis</h2>
+        <p class="subtitle">Offline analysis from vescDat files stored on the board.</p>
+        <button class="button" onclick="rideAnalysis()">Start Data Analysis</button>
+
+        <table id="reportTable">
+            <thead>
+                <tr>
+                    <th>Ride</th>
+                    <th>Type</th>
+                    <th>Count / Time</th>
+                    <th>Detail</th>
+                </tr>
+            </thead>
+            <tbody id="reportBody">
+                <tr><td colspan="4">Click the button to see the result…</td></tr>
+            </tbody>
+        </table>
+    </section>
+
+    <!-- FOOTER -->
+    <footer>
+        <p>Written by Roberto Assiro – Firmware Ver. <b id="version"></b></p>
+        <p>– TecnoFly 2026 –</p>
+    </footer>
+
+</body>
+</html>

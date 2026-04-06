@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TecnoFly – Ride Details</title>
+    <link rel="stylesheet" href="assist.css">
+    <link rel="stylesheet" href="uplot.min.css">
+    <script src="jquery.js"></script>
+    <script src="uplot.iife.min.js"></script>
+    <!-- ★ Algoritmo condiviso ★ -->
+    <script src="rideAnalysis.js"></script>
+    <style>
+      .chart-wrapper {
+        max-width: 1100px;
+        margin: 0 auto;
+      }
+      .uplot {
+        background-color: #f9fafb !important;
+      }
+      .u-over {
+        background-color: transparent !important;
+      }
+    </style>
+</head>
+<body>
+
+    <!-- HEADER -->
+    <header class="header">
+        <img src="tecnofly_logo.gif" alt="TecnoFly">
+        <h1 class="page-title">Foil Assist – Ride <b id="rideNumber"></b></h1>
+    </header>
+
+    <!-- SUMMARY CARD -->
+    <section class="card">
+        <h3>Ride summary</h3>
+        <p>
+            Total time: <b id="Tminutes"></b>:<b id="Tseconds"></b>
+            &nbsp;·&nbsp;
+            Motoring time: <b id="Mminutes"></b>:<b id="Mseconds"></b>
+        </p>
+        <p>
+            Power avg: <b id="powerAverage"></b> W
+            &nbsp;·&nbsp;
+            Max power: <b id="maxPower"></b> W
+            &nbsp;·&nbsp;
+            Max current: <b id="maxCurrent"></b> A
+            &nbsp;·&nbsp;
+            Min voltage: <b id="minVoltage"></b> V
+        </p>
+        <p>
+            Battery energy: <b id="watthour"></b> Wh
+            &nbsp;·&nbsp;
+            Max temp: <b id="maxTemp"></b> °C
+        </p>
+        <p>
+            Waves / pumpings: <b id="waveJson"></b>
+            &nbsp;·&nbsp;
+            Takeoffs: <b id="takeOffJson"></b>
+            &nbsp;·&nbsp;
+            Best wave / pumping time: <b id="waveBestTimeJson"></b> s
+        </p>
+        <p>
+            Rider performance vote: <b id="powerIndex"></b> (0–10)
+        </p>
+    </section>
+
+    <!-- ANALYSIS TABLE -->
+    <section class="card">
+        <h2>Rides analysis</h2>
+        <table id="reportTable">
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Number</th>
+                    <th>Time (s)</th>
+                    <th>Start from</th>
+                    <th>End</th>
+                </tr>
+            </thead>
+            <tbody id="reportBody">
+                <tr><td colspan="5">Click on the button or wait for automatic analysis...</td></tr>
+            </tbody>
+        </table>
+    </section>
+
+    <!-- CHART -->
+    <section class="card">
+        <h2>Ride data plot</h2>
+        <div class="chart-wrapper">
+          <div id="chart"></div>
+        </div>
+    </section>
+
+    <!-- RADIO LINK REPORT -->
+    <section class="card">
+        <h2>Radio link performance during the ride</h2>
+        <div class="rssi-wrap">
+          <div class="card-rssi">
+            <div class="label">RSSI – average signal strength (session)</div>
+            <div style="display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start;">
+              <div style="flex:1; min-width:180px;">
+                <div class="rssi-number" id="rssiAvgSesRide">--<span class="unit">dBm</span></div>
+                <div class="rssi-bar-track">
+                  <div class="rssi-bar-fill" id="rssiBarRide"></div>
+                </div>
+                <div class="rssi-meta">
+                  <span>-100 dBm</span>
+                  <span id="rssiQualityRide" class="rssi-quality">--</span>
+                  <span>-40 dBm</span>
+                </div>
+              </div>
+              <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+                <div class="signal-bars" id="signalBarsRide">
+                  <div class="bar"></div>
+                  <div class="bar"></div>
+                  <div class="bar"></div>
+                  <div class="bar"></div>
+                  <div class="bar"></div>
+                </div>
+                <div id="lossPillRide" class="loss-pill ok">LOSS 0.0%</div>
+              </div>
+            </div>
+          </div>
+        </div>
+    </section>
+
+    <!-- DOWNLOAD + SENSOR INFO -->
+	    <!-- RIDES DATA FILES -->
+    <section class="card">
+        <h2>Download ride data file</h2>
+        <p><button class="button" onclick="downloadtxt()">Download ride file(TXT)</button></p>
+        <p><button class="button" onclick="downloadJson()">Download ride file(JSON)</button></p>
+		<br> <br>
+        <p>On this device the accelerometer sensor is <b id="adxl345"></b></p>
+    </section>
+
+    <!-- FOOTER -->
+    <footer>
+        <p>Written by R. Assiro – Firmware Ver. <b id="version"></b></p>
+        <p>– TecnoFly 2026 –</p>
+    </footer>
+
+    <style>
+      .rssi-wrap { max-width:1100px; margin:0 auto 4px; padding:0; display:grid; grid-template-columns:1fr; gap:14px; }
+      .card-rssi { background:radial-gradient(circle at top,rgba(15,23,42,.96),#020617); border-radius:12px; border:1px solid rgba(34,197,94,.4); padding:18px 20px; }
+      .rssi-number { font-family:'Share Tech Mono',monospace; font-size:32px; color:#e5e7eb; margin-top:6px; }
+      .rssi-number .unit { font-size:14px; color:#9ca3af; margin-left:4px; }
+      .rssi-bar-track { width:100%; height:14px; border-radius:7px; overflow:hidden; background:rgba(15,23,42,.9); border:1px solid rgba(148,163,184,.5); margin:12px 0 8px; }
+      .rssi-bar-fill { height:100%; width:0%; transition:width .45s ease,background .45s ease; }
+      .rssi-meta { display:flex; justify-content:space-between; font-family:'Share Tech Mono',monospace; font-size:11px; color:#9ca3af; }
+      .rssi-quality { font-size:14px; font-weight:700; letter-spacing:2px; }
+      .signal-bars { display:flex; align-items:flex-end; gap:5px; height:52px; }
+      .signal-bars .bar { width:16px; border-radius:3px 3px 0 0; background:rgba(255,255,255,.08); transition:background .4s ease; }
+      .signal-bars .bar:nth-child(1){height:20%} .signal-bars .bar:nth-child(2){height:40%}
+      .signal-bars .bar:nth-child(3){height:60%} .signal-bars .bar:nth-child(4){height:80%}
+      .signal-bars .bar:nth-child(5){height:100%}
+      .loss-pill { display:inline-block; padding:4px 10px; border-radius:999px; font-family:'Share Tech Mono',monospace; font-size:11px; background:rgba(248,113,113,.14); color:#fecaca; border:1px solid rgba(248,113,113,.5); }
+      .loss-pill.ok { background:rgba(34,197,94,.14); color:#bbf7d0; border-color:rgba(34,197,94,.5); }
+    </style>
+
+    <script type="text/javascript">
+
+// ── URL params ──────────────────────────────────────────────
+const parametro  = new URLSearchParams(window.location.search);
+const numero     = parametro.get("ride");
+const numeroRide = parseInt(numero) + 1;
+const fileNumber = parseInt(numero);
+const fileNameTxt   = `vescDat${fileNumber}.txt`;
+const fileNameJson   = `ride${fileNumber}.json`;
+document.getElementById("rideNumber").innerHTML = numeroRide;
+
+window.waveIntervals = [];
+
+// ── addRowToTable ───────────────────────────────────────────
+function addRowToTable(type, number, duration, start, end, highlightClass) {
+    const tr = document.createElement("tr");
+    if (highlightClass) tr.className = highlightClass;
+    [type, number, duration, start, end].forEach(v => {
+        const td = document.createElement("td");
+        td.textContent = (v !== undefined && v !== null && v !== "") ? v : "-";
+        tr.appendChild(td);
+    });
+    document.getElementById("reportBody").appendChild(tr);
+}
+
+function downloadtxt() {
+		let link = document.createElement("a");
+		link.href = fileNameTxt;
+		link.download = fileNameTxt;
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
+}
+
+function downloadJson() {
+		let link = document.createElement("a");
+		link.href = fileNameJson;
+		link.download = fileNameJson;
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
+}
+	
+// ── rideAnalysis (usa rideAnalysis.js condiviso) ────────────
+async function rideAnalysis() {
+    const reportBody = document.getElementById("reportBody");
+    reportBody.innerHTML = "<tr><td colspan='5'>Analyzing ride, please wait…</td></tr>";
+
+    // Leggi stato accelerometro dall'elemento già popolato da fetchDataText
+    const adxlEl   = document.getElementById("adxl345");
+    const hasAdxl  = !adxlEl || adxlEl.textContent.trim().toLowerCase() !== "not present";
+
+    try {
+        const r = await fetchAndAnalyze(fileNumber, hasAdxl);
+
+        // salva intervalli foil per il grafico
+        window.waveIntervals = r.foils.map(f => ({ start: f.start, end: f.end }));
+
+        reportBody.innerHTML = "";
+
+        if (r.totalCount === 0) {
+            reportBody.innerHTML = "<tr><td colspan='5'>No data available for the analysis.</td></tr>";
+            return;
+        }
+
+        // ── Righe di riepilogo ──
+        addRowToTable("Total Take offs",          r.takeoffs.length, "-",                        "-", "-", "");
+        addRowToTable("Total Waves or Pumps",     r.foils.length,    "-",                        "-", "-", "");
+        addRowToTable("Best time on Wave or Pump","-",               r.waveBestTime + " sec",   "-", "-", "best-wave");
+
+        // ── Righe di dettaglio takeoff ──
+        for (const t of r.takeoffs) {
+            const cls = t.duration === r.longestTakeoff ? "longest-takeoff" : "";
+            addRowToTable("TakeOff", t.number, t.duration + " s", t.start, t.end, cls);
+        }
+
+        // ── Righe di dettaglio foil ──
+        for (const f of r.foils) {
+            const cls = f.duration === r.waveBestTime ? "best-wave" : "";
+            addRowToTable("Foil / Wave", f.number, f.duration + " s", f.start, f.end, cls);
+        }
+
+        // ── Righe di dettaglio cadute (collassate) ──
+        if (r.falls.length > 0) {
+            addRowToTable("Falls detected", r.falls.length, "-", r.falls[0].time, r.falls[r.falls.length - 1].time, "");
+        }
+
+    } catch (err) {
+        reportBody.innerHTML = `<tr><td colspan="5">Error: ${err.message}</td></tr>`;
+    }
+}
+
+// ── jQuery ready: dati dal server ──────────────────────────
+$(document).ready(function () {
+    $.getJSON('ride?number=' + numero, function (data) {
+        data.powerIndex = data.powerIndex / 10;
+        document.getElementById("Tminutes").innerHTML      = data.Tminutes;
+        document.getElementById("Tseconds").innerHTML      = data.Tseconds;
+        document.getElementById("maxPower").innerHTML      = data.maxPower.toFixed(0);
+        document.getElementById("minVoltage").innerHTML    = data.minVoltage.toFixed(1);
+        document.getElementById("maxCurrent").innerHTML    = data.maxCurrent.toFixed(1);
+        document.getElementById("maxTemp").innerHTML       = data.maxTemp.toFixed(1);
+        document.getElementById("powerAverage").innerHTML  = data.powerAverage;
+        document.getElementById("powerIndex").innerHTML    = data.powerIndex.toFixed(1);
+        document.getElementById("watthour").innerHTML      = data.watthour.toFixed(1);
+        document.getElementById("Mminutes").innerHTML      = data.Mminutes;
+        document.getElementById("Mseconds").innerHTML      = data.Mseconds;
+        document.getElementById("waveBestTimeJson").innerHTML = data.waveBestTime;
+        document.getElementById("waveJson").innerHTML      = data.wave;
+        document.getElementById("takeOffJson").innerHTML   = data.takeOff;
+
+        if (data.rssiAvgSes !== undefined) {
+            document.getElementById('rssiAvgSesRide').innerHTML =
+                data.rssiAvgSes.toFixed(1) + '<span class="unit">dBm</span>';
+            updateRideRssiUI(data.rssiAvgSes, data.lossPercent);
+        }
+    });
+
+    function fetchDataText(url, elementId) {
+        $.get(url, function (data) { $("#" + elementId).text(data); });
+    }
+    fetchDataText("/ver",       "version");
+    fetchDataText("/checkAdxl", "adxl345");
+});
+
+// ── RSSI helpers ────────────────────────────────────────────
+function rssiToPercentRide(dbm)  { return Math.min(100, Math.max(0, ((dbm + 100) / 60) * 100)); }
+function rssiColorRide(dbm)      { if (dbm >= -60) return '#22c55e'; if (dbm >= -70) return '#a3e635'; if (dbm >= -85) return '#facc15'; return '#f97373'; }
+function rssiQualityLabelRide(d) { if (d >= -60) return 'EXCELLENT'; if (d >= -70) return 'GOOD'; if (d >= -85) return 'FAIR'; return 'POOR'; }
+function updateSignalBarsRide(dbm) {
+    const bars = document.querySelectorAll('#signalBarsRide .bar');
+    const thr  = [-95, -85, -75, -65, -55];
+    const col  = rssiColorRide(dbm);
+    bars.forEach((b, i) => { b.style.background = dbm >= thr[i] ? col : 'rgba(255,255,255,0.08)'; });
+}
+function updateRideRssiUI(rssiAvg, lossPercent) {
+    const col = rssiColorRide(rssiAvg);
+    const bar = document.getElementById('rssiBarRide');
+    bar.style.width      = rssiToPercentRide(rssiAvg) + '%';
+    bar.style.background = col;
+    const ql = document.getElementById('rssiQualityRide');
+    ql.textContent = rssiQualityLabelRide(rssiAvg);
+    ql.style.color = col;
+    updateSignalBarsRide(rssiAvg);
+    const pill = document.getElementById('lossPillRide');
+    if (typeof lossPercent === 'number') {
+        pill.textContent = 'LOSS ' + lossPercent.toFixed(1) + '%';
+        pill.className   = 'loss-pill ' + (lossPercent < 5 ? 'ok' : '');
+    }
+}
+
+// ── Plot ────────────────────────────────────────────────────
+const seriesNames = ["RPM","Voltage (V)","Battery Current (A)","Power (W)","Throttle (%)","Battery (%)","Power (Wh)","Temperature (°C)","Power Avg (W)","RMS xyz","Peak xyz","Tilt xy","Pitch","Roll"];
+const colors      = ["blue","orange","green","red","cyan","brown","gray","pink","black","blue","red","yellow","green","brown"];
+
+async function fetchDataFile() {
+    const response = await fetch(fileName);
+    const data = await response.text();
+    return data.trim().split("\n").map(line => line.split(",").map(e => e.trim()));
+}
+
+function parseData(lines) {
+    const labels = [];
+    const series = Array.from({ length: seriesNames.length }, () => []);
+    for (const row of lines) {
+        labels.push(row[0]);
+        for (let i = 0; i < seriesNames.length; i++) {
+            series[i].push(parseFloat(row[i + 1]));
+        }
+    }
+    return { labels, series };
+}
+
+function setupPlot(labels, seriesData) {
+    const container = document.querySelector('.chart-wrapper');
+    const width     = container.clientWidth - 20;
+    const xVals     = labels.map((_, i) => i);
+    const series    = [{ label: "Time", value: (_, i) => labels[i] }];
+
+    for (let i = 0; i < seriesNames.length; i++) {
+        series.push({
+            label:  seriesNames[i],
+            stroke: colors[i],
+            show:   i === seriesNames.length - 1,
+            width:  2,
+            points: { show: false }
+        });
+    }
+
+    const opts = {
+        width, height: 500,
+        scales: { x: { time: false } },
+        series,
+        cursor: { drag: { x: false, y: false } },
+        plugins: [{
+            hooks: {
+                ready: u => {
+                    const over    = u.root.querySelector(".u-over");
+                    const tooltip = document.createElement("div");
+                    tooltip.className = "u-tooltip";
+                    over.appendChild(tooltip);
+
+                    over.addEventListener("mousemove", e => {
+                        const { left } = over.getBoundingClientRect();
+                        const x   = e.clientX - left;
+                        const y   = e.clientY - over.getBoundingClientRect().top;
+                        const idx = u.posToIdx(x);
+                        if (idx >= 0 && idx < u.data[0].length) {
+                            let html = `<b>Time:</b> ${labels[idx]}<br>`;
+                            for (let i = 1; i < u.series.length; i++) {
+                                if (u.series[i].show)
+                                    html += `<span style="color:${colors[i-1]}">${u.series[i].label}</span>: ${u.data[i][idx]}<br>`;
+                            }
+                            tooltip.innerHTML      = html;
+                            tooltip.style.left     = x + 10 + "px";
+                            tooltip.style.top      = y + 10 + "px";
+                            tooltip.style.display  = "block";
+                        } else {
+                            tooltip.style.display = "none";
+                        }
+                    });
+                    over.addEventListener("mouseleave", () => { tooltip.style.display = "none"; });
+                }
+            }
+        }]
+    };
+
+    const uplot = new uPlot(opts, [xVals, ...seriesData], document.getElementById("chart"));
+
+    let isPanning = false, panStartX = 0, panMin = 0, panMax = 0;
+
+    uplot.root.addEventListener("mousedown", e => {
+        if (e.button !== 0) return;
+        e.preventDefault(); isPanning = true; panStartX = e.clientX;
+        panMin = uplot.scales.x.min; panMax = uplot.scales.x.max;
+        uplot.root.style.cursor = "grabbing";
+    });
+    window.addEventListener("mousemove", e => {
+        if (!isPanning) return;
+        const dx    = e.clientX - panStartX;
+        const range = panMax - panMin;
+        const shift = -dx / uplot.bbox.width * range;
+        const dMin  = uplot.data[0][0];
+        const dMax  = uplot.data[0][uplot.data[0].length - 1];
+        let nMin = panMin + shift, nMax = panMax + shift;
+        if (nMin < dMin) { nMin = dMin; nMax = dMin + range; }
+        if (nMax > dMax) { nMax = dMax; nMin = dMax - range; }
+        uplot.setScale("x", { min: nMin, max: nMax });
+    });
+    window.addEventListener("mouseup", () => { isPanning = false; uplot.root.style.cursor = "grab"; });
+
+    uplot.root.addEventListener("wheel", e => {
+        e.preventDefault();
+        const factor = e.deltaY > 0 ? 1.2 : 0.8;
+        const rect   = uplot.root.getBoundingClientRect();
+        const idx    = uplot.posToIdx(e.clientX - rect.left);
+        if (idx == null) return;
+        const min = uplot.scales.x.min, max = uplot.scales.x.max;
+        const newRange = (max - min) * factor;
+        const pct      = (idx - min) / (max - min);
+        uplot.setScale("x", { min: idx - newRange * pct, max: idx + newRange * (1 - pct) });
+    }, { passive: false });
+
+    uplot.root.addEventListener("dblclick", () => { uplot.setScale("x", { min: null, max: null }); });
+
+    window.addEventListener("resize", () => {
+        uplot.setSize({ width: container.clientWidth - 20, height: 500 });
+    });
+}
+
+fetchDataFile().then(data => {
+    const { labels, series } = parseData(data);
+    setupPlot(labels, series);
+});
+
+// start analysis automatically on load
+window.addEventListener("load", () => { rideAnalysis(); });
+
+    </script>
+</body>
+</html>

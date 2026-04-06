@@ -1,0 +1,484 @@
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TecnoFly – Live Monitor</title>
+  <link href="assist.css" rel="stylesheet" type="text/css">
+  <script src="jquery.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap');
+    :root {
+      --mono:     'Share Tech Mono', monospace;
+      --head:     'Rajdhani', sans-serif;
+      --accent:   #0ea5e9;
+      --accent2:  #22c55e;
+      --danger:   #f97373;
+      --subtle:   #9ca3af;
+    }
+    body { font-family: var(--head); margin: 0; padding: 0; }
+    .section-title {
+      max-width: 1100px;
+      margin: 22px auto 10px;
+      padding: 0 20px;
+      font-size: 11px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #9ca3af;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: rgba(148, 163, 184, 0.4);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 14px;
+      padding: 0 20px;
+      max-width: 1100px;
+      margin: auto;
+    }
+    .card-metric {
+      background: radial-gradient(circle at top, rgba(15,23,42,0.96), #020617);
+      border-radius: 12px;
+      border: 1px solid rgba(148,163,184,0.25);
+      padding: 16px 20px 14px;
+    }
+    .label { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: #9ca3af; margin-bottom: 6px; }
+    .value { font-family: var(--mono); font-size: 32px; line-height: 1; color: #e5e7eb; }
+    .value .unit { font-size: 14px; color: #9ca3af; margin-left: 4px; }
+    .imu-wrap { max-width: 1100px; margin: 0 auto 4px; padding: 0 20px; }
+    .imu-inner {
+      background: radial-gradient(circle at top, rgba(15,23,42,0.96), #020617);
+      border-radius: 12px;
+      border: 1px solid rgba(148,163,184,0.25);
+      padding: 20px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+    @media (max-width: 640px) { .imu-inner { grid-template-columns: 1fr; } }
+    .imu-block { text-align: center; }
+    .imu-val { font-family: var(--mono); font-size: 40px; color: #e5e7eb; }
+    .imu-val .deg { font-size: 18px; color: #9ca3af; margin-left: 2px; vertical-align: super; }
+    .imu-hint { font-size: 11px; color: #9ca3af; letter-spacing: 1px; margin-top: 5px; text-transform: uppercase; }
+    .rssi-wrap { max-width: 1100px; margin: 0 auto 24px; padding: 0 20px; display: grid; grid-template-columns: 1fr 260px; gap: 14px; }
+    @media (max-width: 700px) { .rssi-wrap { grid-template-columns: 1fr; } }
+    .card-rssi {
+      background: radial-gradient(circle at top, rgba(15,23,42,0.96), #020617);
+      border-radius: 12px;
+      border: 1px solid rgba(34,197,94,0.4);
+      padding: 18px 20px;
+    }
+    .rssi-number { font-family: var(--mono); font-size: 40px; color: #e5e7eb; margin-top: 6px; }
+    .rssi-number .unit { font-size: 18px; color: #9ca3af; margin-left: 4px; }
+    .rssi-bar-track { width: 100%; height: 14px; border-radius: 7px; overflow: hidden; background: rgba(15,23,42,0.9); border: 1px solid rgba(148,163,184,0.5); margin: 12px 0 8px; }
+    .rssi-bar-fill { height: 100%; width: 0%; transition: width 0.45s ease, background 0.45s ease; }
+    .rssi-meta { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px; color: #9ca3af; }
+    .rssi-quality { font-size: 14px; font-weight: 700; letter-spacing: 2px; }
+    .signal-bars { display: flex; align-items: flex-end; gap: 5px; height: 52px; }
+    .signal-bars .bar { width: 16px; border-radius: 3px 3px 0 0; background: rgba(255,255,255,0.08); transition: background 0.4s ease; }
+    .signal-bars .bar:nth-child(1) { height: 20%; }
+    .signal-bars .bar:nth-child(2) { height: 40%; }
+    .signal-bars .bar:nth-child(3) { height: 60%; }
+    .signal-bars .bar:nth-child(4) { height: 80%; }
+    .signal-bars .bar:nth-child(5) { height: 100%; }
+    .loss-pill {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-family: var(--mono);
+      font-size: 11px;
+      background: rgba(248,113,113,0.14);
+      color: #fecaca;
+      border: 1px solid rgba(248,113,113,0.5);
+    }
+    .loss-pill.ok { background: rgba(34,197,94,0.14); color: #bbf7d0; border-color: rgba(34,197,94,0.5); }
+    .rssi-stats {
+      background: radial-gradient(circle at top, rgba(15,23,42,0.96), #020617);
+      border-radius: 12px;
+      border: 1px solid rgba(148,163,184,0.25);
+      padding: 18px 20px;
+    }
+    .stat-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(148,163,184,0.3); }
+    .stat-row:last-child { border-bottom: none; }
+    .stat-key { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: #9ca3af; }
+    .stat-val { font-family: var(--mono); font-size: 20px; color: #e5e7eb; }
+    .stat-val .unit { font-size: 12px; color: #9ca3af; margin-left: 3px; }
+    .settings-wrap { max-width: 1100px; margin: 0 auto 24px; padding: 0 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 640px) { .settings-wrap { grid-template-columns: 1fr; } }
+    .settings-card {
+      background: radial-gradient(circle at top, rgba(15,23,42,0.96), #020617);
+      border-radius: 12px;
+      border: 1px solid rgba(148,163,184,0.25);
+      padding: 18px 20px;
+    }
+    .settings-card h3 { font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: #9ca3af; margin-bottom: 10px; }
+    .settings-card p { font-size: 13px; color: #9ca3af; margin-bottom: 10px; }
+    select {
+      font-family: var(--head);
+      font-size: 14px;
+      font-weight: 600;
+      border-radius: 7px;
+      border: 1px solid rgba(148,163,184,0.7);
+      background: rgba(15,23,42,0.9);
+      color: #e5e7eb;
+      padding: 8px 12px;
+    }
+    button.small {
+      font-size: 12px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(56,189,248,0.6);
+      background: rgba(15,23,42,0.9);
+      color: #e5e7eb;
+      cursor: pointer;
+    }
+    button.small:hover { background: rgba(37,99,235,0.6); }
+    footer { text-align: center; margin: 20px 0 10px; font-family: var(--mono); font-size: 11px; color: #9ca3af; }
+  </style>
+</head>
+<body>
+
+  <header class="header">
+    <img src="tecnofly_logo.gif" alt="TecnoFly">
+    <h1 class="page-title">Foil Assist – Live Monitor</h1>
+  </header>
+
+  <!-- TELEMETRY -->
+  <p class="section-title">Telemetry</p>
+  <div class="grid">
+    <div class="card-metric">
+      <div class="label">Battery Voltage</div>
+      <div class="value" id="voltage">--<span class="unit">V</span></div>
+    </div>
+    <div class="card-metric">
+      <div class="label">Current</div>
+      <div class="value" id="current">--<span class="unit">A</span></div>
+    </div>
+    <div class="card-metric">
+      <div class="label">Power</div>
+      <div class="value" id="power">----<span class="unit">W</span></div>
+    </div>
+    <div class="card-metric">
+      <div class="label">Temperature</div>
+      <div class="value" id="tempMosfet">--<span class="unit">°C</span></div>
+    </div>
+    <div class="card-metric">
+      <div class="label">Battery</div>
+      <div class="value" id="batpercentage">--<span class="unit">%</span></div>
+    </div>
+  </div>
+
+
+<p class="section-title">Throttle</p>
+<div class="rssi-wrap">
+  <div class="card-rssi">
+    <div class="label">Throttle input</div>
+    <div style="display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start;">
+      
+      <div style="flex:1; min-width:180px;">
+        <div class="rssi-number" id="throttleValue">--<span class="unit">%</span></div>
+
+        <div class="rssi-bar-track">
+          <div class="rssi-bar-fill" id="throttleBar"></div>
+        </div>
+
+        <div class="rssi-meta">
+          <span>0%</span>
+          <span id="throttleState" class="rssi-quality">--</span>
+          <span>100%</span>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+        <div class="signal-bars" id="throttleBars">
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+	  <div class="card-metric">
+	    <div class="label">Link Radio Channel Number:</div>
+	    <div class="value" id="channel">--</div>
+	  </div>
+</div>
+
+  <!-- ORIENTATION -->
+  <p class="section-title">Board orientation</p>
+  <div class="imu-wrap">
+    <div class="imu-inner">
+      <div class="imu-block">
+        <div class="label">Roll</div>
+        <div class="imu-val"><span id="roll">0</span><span class="deg">°</span></div>
+        <div class="imu-hint">lateral tilt</div>
+      </div>
+      <div class="imu-block">
+        <div class="label">Pitch</div>
+        <div class="imu-val"><span id="pitch">0</span><span class="deg">°</span></div>
+        <div class="imu-hint">fore / aft tilt</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RF SIGNAL -->
+  <p class="section-title">RF Signal quality</p>
+  <div class="rssi-wrap">
+    <div class="card-rssi">
+      <div class="label">RSSI – received signal strength</div>
+      <div style="display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start;">
+        <div style="flex:1; min-width:180px;">
+          <div class="rssi-number" id="rssiValue">--<span class="unit">dBm</span></div>
+          <div class="rssi-bar-track">
+            <div class="rssi-bar-fill" id="rssiBar"></div>
+          </div>
+          <div class="rssi-meta">
+            <span>-100 dBm</span>
+            <span id="rssiQuality" class="rssi-quality">--</span>
+            <span>-40 dBm</span>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+          <div class="signal-bars" id="signalBars">
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+          </div>
+          <div id="lossPill" class="loss-pill ok">LOSS 0.0%</div>
+          <button id="rssiReset" class="small">Reset stats</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="rssi-stats">
+      <div class="label" style="margin-bottom:10px">Session stats</div>
+      <div class="stat-row">
+        <span class="stat-key">Avg RSSI</span>
+        <span class="stat-val" id="rssiAvgSes">--<span class="unit">dBm</span></span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-key">Packets RX</span>
+        <span class="stat-val" id="rssiPackets">--<span class="unit">pkt</span></span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-key">Packets lost</span>
+        <span class="stat-val" id="PacketsLost">--<span class="unit">pkt</span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <p class="section-title">Settings</p>
+  <div class="settings-wrap">
+    <div class="settings-card">
+      <h3>VESC voltage offset</h3>
+      <p>Adjust VESC voltage reading in steps of 50 mV.</p>
+      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <select id="offset">
+          <option value="0">0</option>
+          <option value="10">+100mV</option><option value="15">+150mV</option>
+          <option value="20">+200mV</option><option value="25">+250mV</option>
+          <option value="30">+300mV</option><option value="35">+350mV</option>
+          <option value="40">+400mV</option><option value="45">+450mV</option>
+          <option value="50">+500mV</option><option value="55">+550mV</option>
+          <option value="60">+600mV</option><option value="65">+650mV</option>
+          <option value="70">+700mV</option><option value="75">+750mV</option>
+          <option value="80">+800mV</option><option value="85">+850mV</option>
+          <option value="90">+900mV</option><option value="95">+950mV</option>
+          <option value="100">+1V</option>
+          <option value="110">-100mV</option><option value="115">-150mV</option>
+          <option value="120">-200mV</option><option value="125">-250mV</option>
+          <option value="130">-300mV</option><option value="135">-350mV</option>
+          <option value="140">-400mV</option><option value="145">-450mV</option>
+          <option value="150">-500mV</option><option value="155">-550mV</option>
+          <option value="160">-600mV</option><option value="165">-650mV</option>
+          <option value="170">-700mV</option><option value="175">-750mV</option>
+          <option value="180">-800mV</option><option value="185">-850mV</option>
+          <option value="190">-900mV</option><option value="195">-950mV</option>
+          <option value="1100">-1V</option>
+        </select>
+        <span style="font-family:var(--mono); font-size:13px; color:#9ca3af;">Current: <b id="offsetValue">--</b></span>
+      </div>
+    </div>
+
+    <div class="settings-card">
+      <h3>Accelerometer</h3>
+      <p>Place the board on a flat level surface before calibrating.</p>
+      <button id="calib2" class="small">Calibrate accelerometer</button>
+    </div>
+  </div>
+
+  <!-- BACK HOME -->
+  <section class="card">
+    <button class="button" onclick="window.location.href='/index.html'">Back home</button>
+	<br><br>
+	<button class="button" onclick="window.location.href='/expert.html'">Expert</button>	
+  </section>
+
+  <footer>
+    Written by Roberto Assiro – TecnoFly Foil Assist – FW <span id="version">--</span>
+  </footer>
+
+  <script>
+    $(function() {
+      $("#offset").on('change', function(e) {
+        e.preventDefault();
+        $.get("/offset?number=" + $(this).val(), function() {
+          console.log("offset sent");
+        });
+      });
+
+      $("#rssiReset").on('click', function(e) {
+        e.preventDefault();
+        $.get("/rssiReset", function() { console.log("RSSI reset"); });
+      });
+
+      $("#calib2").on('click', function(e) {
+        e.preventDefault();
+        $.get("/xyzCalib", function() { console.log("Calibrating ADXL345..."); });
+      });
+    });
+
+    fetch('/ver').then(r => r.text()).then(t => {
+      document.getElementById('version').textContent = t;
+    });
+
+    fetch('/read_offset').then(r => r.text()).then(t => {
+      document.getElementById('offsetValue').textContent = t;
+      const v = parseFloat(t);
+      const code = v >= 0 ? Math.round(v * 100) : Math.round(-v * 100) + 100;
+      const sel = document.getElementById('offset');
+      if (sel.querySelector('option[value="' + code + '"]')) sel.value = code;
+    });
+
+
+async function fetchData() {
+  try {
+    const res = await fetch('/data');
+    const d = await res.json();
+
+    // TELEMETRIA
+    document.getElementById('voltage').innerHTML       = d.voltage.toFixed(1) + '<span class="unit">V</span>';
+    document.getElementById('current').innerHTML       = d.current.toFixed(1) + '<span class="unit">A</span>';
+    document.getElementById('tempMosfet').innerHTML    = d.tempMosfet.toFixed(1) + '<span class="unit">°C</span>';
+    document.getElementById('power').innerHTML         = d.power + '<span class="unit">W</span>';
+    document.getElementById('batpercentage').innerHTML = d.batpercentage + '<span class="unit">%</span>';
+
+    // ORIENTAMENTO
+    document.getElementById('roll').textContent  = d.roll;
+    document.getElementById('pitch').textContent = d.pitch;
+
+    // RSSI + STATS
+    const col = rssiColor(d.rssi);
+
+    document.getElementById('rssiValue').innerHTML   = d.rssi + '<span class="unit">dBm</span>';
+    document.getElementById('rssiPackets').innerHTML = d.packets + '<span class="unit">pkt</span>';
+    document.getElementById('PacketsLost').innerHTML = d.lost + '<span class="unit">pkt</span>';
+
+	// THROTTLE
+	const t = d.throttle;
+	document.getElementById('throttleValue').innerHTML =
+	  t + '<span class="unit">%</span>';
+
+	const tBar = document.getElementById('throttleBar');
+	tBar.style.width = t + '%';
+	tBar.style.background = throttleColor(t);
+
+	const tState = document.getElementById('throttleState');
+	tState.textContent = throttleLabel(t);
+	tState.style.color = throttleColor(t);
+
+	updateThrottleBars(t);
+
+    if (d.rssiAvgSes !== undefined) {
+      document.getElementById('rssiAvgSes').innerHTML =
+        d.rssiAvgSes.toFixed(1) + '<span class="unit">dBm</span>';
+    }
+
+    const bar = document.getElementById('rssiBar');
+    bar.style.width      = rssiToPercent(d.rssi) + '%';
+    bar.style.background = col;
+
+    const ql = document.getElementById('rssiQuality');
+    ql.textContent = rssiQualityLabel(d.rssi);
+    ql.style.color = col;
+
+    updateSignalBars(d.rssi);
+
+	document.getElementById('channel').textContent = d.channel;
+
+    const pill = document.getElementById('lossPill');
+    pill.textContent = 'LOSS ' + d.lossPercent.toFixed(1) + '%';
+    pill.className = 'loss-pill ' + (d.lossPercent < 5 ? 'ok' : '');
+
+  } catch(e) {
+    console.warn('Data error', e);
+  }
+
+}
+	
+function throttleColor(val) {
+  if (val < 20) return '#22c55e';   // verde
+  if (val < 60) return '#facc15';   // giallo
+  return '#f97373';                 // rosso
+}
+
+function throttleLabel(val) {
+  if (val < 5) return 'IDLE';
+  if (val < 20) return 'LOW';
+  if (val < 60) return 'CRUISE';
+  if (val < 85) return 'HIGH';
+  return 'MAX';
+}
+
+function updateThrottleBars(val) {
+  const bars = document.querySelectorAll('#throttleBars .bar');
+  const thresholds = [10, 30, 50, 70, 90];
+  const col = throttleColor(val);
+
+  bars.forEach((b, i) => {
+    b.style.background = val >= thresholds[i] ? col : 'rgba(255,255,255,0.08)';
+  });
+}
+
+
+
+
+    function rssiToPercent(dbm) {
+      return Math.min(100, Math.max(0, ((dbm + 100) / 60) * 100));
+    }
+    function rssiColor(dbm) {
+      if (dbm >= -60) return '#22c55e';
+      if (dbm >= -70) return '#a3e635';
+      if (dbm >= -85) return '#facc15';
+      return '#f97373';
+    }
+    function rssiQualityLabel(dbm) {
+      if (dbm >= -60) return 'EXCELLENT';
+      if (dbm >= -70) return 'GOOD';
+      if (dbm >= -85) return 'FAIR';
+      return 'POOR';
+    }
+    function updateSignalBars(dbm) {
+      const bars = document.querySelectorAll('#signalBars .bar');
+      const thresholds = [-95, -85, -75, -65, -55];
+      const col = rssiColor(dbm);
+      bars.forEach((b, i) => {
+        b.style.background = dbm >= thresholds[i] ? col : 'rgba(255,255,255,0.08)';
+      });
+    }
+    setInterval(fetchData, 500);
+    fetchData();
+  </script>
+</body>
+</html>

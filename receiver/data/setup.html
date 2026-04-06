@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TecnoFly – Setup</title>
+    <link href="assist.css" rel="stylesheet" type="text/css">
+    <script src="jquery.js"></script>
+    <style>
+      .switch {
+        position: relative;
+        display: inline-block;
+        width: 60px;
+        height: 34px;
+      }
+      .switch input { opacity: 0; width: 0; height: 0; }
+      .slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background-color: #374151;
+        transition: .4s;
+        border-radius: 34px;
+      }
+      .slider:before {
+        position: absolute;
+        content: "";
+        height: 26px;
+        width: 26px;
+        left: 4px;
+        bottom: 4px;
+        background-color: white;
+        transition: .4s;
+        border-radius: 50%;
+      }
+      input:checked + .slider { background-color: #0ea5e9; }
+      input:checked + .slider:before { transform: translateX(26px); }
+      .setting-note { color: #9ca3af; font-size: 0.9rem; margin-top: 4px; }
+    </style>
+</head>
+<body>
+
+    <!-- HEADER -->
+    <header class="header">
+        <img src="tecnofly_logo.gif" alt="TecnoFly">
+        <h1 class="page-title">Foil Assist – System Setup</h1>
+    </header>
+
+    <!-- LIFE COUNTER -->
+    <section class="card">
+        <h2>Device lifetime rides</h2>
+        <p><b id="lifeCounter">...</b></p>
+        <p class="setting-note">Any time you insert a new battery and press the trigger the counter increases.</p>
+    </section>
+
+    <!-- WELCOME MESSAGE -->
+    <section class="card">
+        <h2>Welcome message on remote at boot</h2>
+        <form action="/Wmessage">
+            <p>Row 1:</p>
+            <input type="text" id="input1" name="input1" maxlength="8">
+            <p>Row 2:</p>
+            <input type="text" id="input2" name="input2" maxlength="8">
+            <p>Row 3:</p>
+            <input type="text" id="input3" name="input3" maxlength="8">
+            <br><br>
+            <input type="submit" value="Store message" class="button">
+        </form>
+    </section>
+
+    <!-- AUTO SAFETY LOCK -->
+    <section class="card">
+        <h2>Auto Safety Lock (gravity sensor)</h2>
+        <p>
+            The gravity sensor can automatically disable the trigger when the board is not in the correct position.
+        </p>
+        <label class="switch">
+            <input type="checkbox" id="autoLockSwitch">
+            <span class="slider"></span>
+        </label>
+        <p>State: <b id="autoLockState">...</b></p>
+        <h4>Angle threshold to stop the motor</h4>
+        <select id="degrees">
+            <option value="0">0° (disabled)</option>
+            <option value="15">15°</option>
+            <option value="20">20°</option>
+            <option value="25">25°</option>
+            <option value="30">30°</option>
+            <option value="35">35°</option>
+            <option value="40">40°</option>
+            <option value="45">45°</option>
+            <option value="50">50°</option>
+            <option value="55">55°</option>
+        </select>
+    </section>
+
+    <!-- RX CODING -->
+    <section class="card">
+        <h2>Receiver code</h2>
+        <button class="button" id="coding">Receiver code change</button>
+        <p class="setting-note">Changes the transmission code of the receiver (use only if necessary).</p>
+        <hr>
+        <h3>Current receiver code: <b id="rx_number"></b></h3>
+    </section>
+
+    <!-- FIRMWARE UPGRADE -->
+    <section class="card">
+        <h2>Firmware upgrade</h2>
+        <p>
+            <button class="button" id="upgrade">Upgrade firmware from server</button>
+        </p>
+        <p class="setting-note">Before clicking, the TecnoFly WiFi hotspot must be active.</p>
+        <br>
+        <p>
+            <button class="button" onclick="window.location.href='/update'">Upgrade firmware from file</button>
+        </p>
+    </section>
+
+    <!-- RIDES DATA FILES -->
+    <section class="card">
+        <h2>Download rides data files</h2>
+        <p><button class="button" onclick="downloadFiles()">Download all rides (TXT)</button></p>
+        <p><button class="button" onclick="downloadJson()">Download all rides (JSON)</button></p>
+    </section>
+
+    <section class="card">
+		<button class="button" onclick="window.location.href='/index.html'">Back home</button>
+		<br><br>
+        <button class="button" onclick="window.location.href='expert.html'">Expert</button>
+		<br><br>
+        <button class="button" onclick="window.location.href='test.html'">Sensors Data Monitor</button>
+            </section>
+
+    <!-- FOOTER -->
+    <footer>
+        <p>Written by Roberto Assiro – Firmware Ver. <b id="version"></b></p>
+        <p>– TecnoFly 2026 –</p>
+    </footer>
+
+    <script type="text/javascript">
+    // RIDES COUNTER
+    document.addEventListener("DOMContentLoaded", function() {
+        fetch("/lifeCounter")
+          .then(res => res.text())
+          .then(val => {
+              document.getElementById("lifeCounter").textContent = val.trim();
+          })
+          .catch(err => {
+              console.error("Error to read rides counter:", err);
+              document.getElementById("lifeCounter").textContent = "N/A";
+          });
+    });
+
+    // TOGGLE SWITCH AUTOLOCK
+    document.addEventListener("DOMContentLoaded", function() {
+        const switchEl  = document.getElementById("autoLockSwitch");
+        const stateText = document.getElementById("autoLockState");
+        const degreesEl = document.getElementById("degrees");
+
+        // Read initial state
+        fetch("/readAutolock")
+            .then(res => res.text())
+            .then(val => {
+                val = parseInt(val.trim());
+                if (val > 0) {
+                    switchEl.checked = true;
+                    stateText.textContent = "Active";
+                    degreesEl.value = val;
+                } else {
+                    switchEl.checked = false;
+                    stateText.textContent = "Disabled";
+                    degreesEl.value = "0";
+                }
+            });
+
+        // Switch change
+        switchEl.addEventListener("change", function() {
+            let newVal;
+            if (switchEl.checked) {
+                newVal = 45; // default
+                degreesEl.value = "45";
+                stateText.textContent = "Active";
+            } else {
+                newVal = 0;
+                degreesEl.value = "0";
+                stateText.textContent = "Disabled";
+            }
+            fetch(`/autolock?number=${newVal}`);
+        });
+
+        // Manual degrees change
+        degreesEl.addEventListener("change", function() {
+            if (switchEl.checked) {
+                let newVal = degreesEl.value;
+                fetch(`/autolock?number=${newVal}`);
+            }
+        });
+    });
+
+    function downloadFiles() {
+        for (let i = 0; i < 10; i++) {
+            let fileName = `vescDat${i}.txt`;
+            let link = document.createElement("a");
+            link.href = fileName;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    }
+
+    function downloadJson() {
+        for (let i = 0; i < 10; i++) {
+            let fileName = `ride${i}.json`;
+            let link = document.createElement("a");
+            link.href = fileName;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    }
+
+    $(document).ready(function() {
+        $("#serial").on('change', function(e) {
+            e.preventDefault();
+            $.get("/serial?number=" + $("#serial").val(), function () {
+                console.log("Serial Number changed");
+            });
+            alert("Serial Number changed");
+        });
+
+        $("#upgrade").on('click', function(e) {
+            e.preventDefault();
+            $.get("/upgrade", function () {
+                console.log("Upgrade initiated");
+            });
+            alert("Before clicking, the WiFi hotspot TecnoFly must be active");
+        });
+
+        $("#coding").on('click', function(e) {
+            e.preventDefault();
+            $.get("/boardCode", function () {
+                console.log("Random coding the receiver");
+            });
+            alert("It requires to pairing the remote controller");
+        });
+
+        function fetchData(url, elementId) {
+            $.get(url, function(data) {
+                $("#" + elementId).text(data);
+            });
+        }
+
+        fetchData("/ver", "version");
+        fetchData("/rx_number", "rx_number");
+
+        $.get('/readMessage', function(data) {
+            const [var1, var2, var3] = data.split(",");
+            $('#input1').val(var1);
+            $('#input2').val(var2);
+            $('#input3').val(var3);
+        }).fail(function(error) {
+            console.log('Error in request:', error);
+        });
+    });
+    </script>
+</body>
+</html>
