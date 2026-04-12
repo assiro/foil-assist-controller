@@ -49,7 +49,7 @@ Communication uses the **ESP-NOW** protocol, a peer-to-peer Wi-Fi protocol that 
 - Custom PCB (TecnoFly PCB0425)
 - STL 3D print parts: https://www.thingiverse.com/thing:6746363
 
-![Controller PCB](images/controller_pcb.jpg)
+![Controller PCB](images/controller pcb.jpg)
 *Custom PCB — TecnoFly PCB0425*
 
 ![ePaper display](images/display.jpg)
@@ -57,7 +57,7 @@ Communication uses the **ESP-NOW** protocol, a peer-to-peer Wi-Fi protocol that 
 
 #### Transmitter Schematic
 
-![Schematic](images/controller_v5_schematic.png)
+![Schematic](images/controller v5 schematic.png)
 *Full schematic — TecnoFly Foil Assist Remote Controller (ePaper display version)*
 
 ---
