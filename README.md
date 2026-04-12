@@ -47,6 +47,7 @@ Communication uses the **ESP-NOW** protocol, a peer-to-peer Wi-Fi protocol that 
 - Magnetic charging connector (pogo pins)
 - AO3400 N-channel MOSFETs
 - Custom PCB (TecnoFly PCB0425)
+- STL 3D print parts: https://www.thingiverse.com/thing:6746363
 
 ![Controller PCB](images/controller_pcb.jpg)
 *Custom PCB — TecnoFly PCB0425*
@@ -137,7 +138,7 @@ foil-assist-controller/
 ## Credits
 
 Designed and developed by **R. & L. Assiro** — TecnoFly  
-Firmware version: 5.36+
+Firmware version: 5.36
 
 ---
 
