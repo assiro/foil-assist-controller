@@ -54,6 +54,55 @@ body {
     overflow: hidden;
 }
 
+/* INFO IMU (roll/pitch sotto batteria) */
+.imu-info {
+    margin-top: 12px;
+    font-size: 22px;   
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.menu-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    width: 330px;
+    margin: 14px auto;
+    padding: 18px;
+
+    font-size: 20px;
+    font-weight: 600;
+    color: #0f172a; /* testo scuro */
+    background: linear-gradient(135deg, #38bdf8, #0ea5e9); /* AZZURRO */
+    border: none;
+    border-radius: 16px;
+    cursor: pointer;
+    box-shadow: 0 8px 20px rgba(14, 165, 233, 0.4);
+    transition: all 0.2s ease;
+}
+
+.menu-button:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 30px rgba(14, 165, 233, 0.6);
+}
+
+.menu-button:active {
+    transform: scale(0.97);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.8);
+}
+
+.menu-card {
+    margin-top: 30px;
+}
+
+.menu-card h3 {
+    margin-bottom: 20px;
+    color: var(--accent);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
 .header::before {
     content: "";
     position: absolute;
@@ -137,7 +186,7 @@ button {
 }
 
 .button:hover,
-button:hover {
+	button:hover {
     transform: translateY(-1px) scale(1.02);
     box-shadow: 0 16px 40px rgba(59, 130, 246, 0.45);
     background: radial-gradient(circle at top left, #38bdf8, #0ea5e9);
@@ -145,7 +194,7 @@ button:hover {
 }
 
 .button:active,
-button:active {
+	button:active {
     transform: translateY(0) scale(0.99);
     box-shadow: 0 8px 22px rgba(15, 23, 42, 0.9);
 }
@@ -214,6 +263,39 @@ button:active {
     padding-inline: 14px;
 }
 
+/* BATTERY CARD */
+.battery-card {
+    max-width: 320px;
+    margin: 30px auto 10px;
+    padding: 14px;
+    border-radius: var(--radius-md);
+    background: radial-gradient(circle at top, rgba(15,23,42,0.95), #020617);
+    border: 1px solid rgba(56, 189, 248, 0.2);
+    box-shadow: 0 10px 30px rgba(15,23,42,0.9);
+}
+
+/* LABEL */
+.battery-label {
+    font-size: 20px;
+    margin-bottom: 8px;
+    color: var(--text-muted);
+}
+
+.battery-bar {
+    width: 100%;
+    height: 25px;
+    background: #111827;
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.battery-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 999px;
+    transition: width 0.4s ease, background 0.3s ease;
+}
+
 /* Tabelle (per log / report) */
 table {
     width: 100%;
@@ -263,7 +345,6 @@ tr:nth-child(odd) td {
     font-weight: 600;
 }
 
-/* Separatore orizzontale */
 hr {
     border: 0;
     height: 1px;
@@ -299,4 +380,9 @@ footer {
         width: 100%;
         justify-content: center;
     }
+	
+	.battery-fill {
+    transition: width 0.4s ease, background 0.3s ease;
+    }
+	
 }

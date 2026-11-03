@@ -36,9 +36,96 @@
       input:checked + .slider { background-color: #0ea5e9; }
       input:checked + .slider:before { transform: translateX(26px); }
       .setting-note { color: #9ca3af; font-size: 0.9rem; margin-top: 4px; }
+      /* Modal overlay for event log */
+      .modal-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.7);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+      }
+      .modal-overlay.show { display: flex; }
+      .modal-box {
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 600px;
+        max-height: 80vh;
+        display: flex;
+        flex-direction: column;
+        padding: 20px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      }
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+      .modal-header h2 { margin: 0; font-size: 1.2rem; }
+      .modal-close {
+        background: none;
+        border: none;
+        color: #94a3b8;
+        font-size: 1.5rem;
+        cursor: pointer;
+      }
+      .modal-close:hover { color: #fff; }
+      .modal-body {
+        overflow-y: auto;
+        font-family: 'Courier New', monospace;
+        font-size: 0.8rem;
+        background: #0f172a;
+        border-radius: 8px;
+        padding: 12px;
+        white-space: pre-wrap;
+        line-height: 1.5;
+        color: #e2e8f0;
+        flex: 1;
+        min-height: 200px;
+      }
+      .modal-body .highlight-on { color: #ef4444; }
+      .modal-body .highlight-cut { color: #f97316; }
+      /* ? Motor inversion warning block */
+      .motor-inversion-warning {
+        border: 3px solid #ef4444;
+        border-radius: 10px;
+        padding: 12px 14px;
+        background: rgba(239,68,68,0.12);
+        margin: 10px 0;
+        box-shadow: 0 0 12px rgba(239,68,68,0.25);
+      }
+      .motor-inversion-warning .inv-label {
+        display: inline-block;
+        width: 180px;
+        font-weight: bold;
+        color: #ef4444;
+        font-size: 1rem;
+      }
+      .motor-inversion-note {
+        color: #fca5a5;
+        font-size: 0.75rem;
+        margin: 6px 0 0 0;
+        line-height: 1.4;
+      }
+      .modal-body .highlight-ready { color: #22c55e; }
+      .modal-body .highlight-boot { color: #3b82f6; }
+      .modal-footer {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+      }
     </style>
+<style>
+.bg-cf{position:fixed;inset:0;z-index:-1;background:#1e1f20 url(fiber.jpg) repeat}
+.bg-cf::after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at 50% 0,rgba(34,211,238,.04) 0,transparent 60%),linear-gradient(180deg,rgba(5,7,9,.35),rgba(5,7,9,.85))}
+</style>
 </head>
 <body>
+<div class="bg-cf"></div>
 
     <!-- HEADER -->
     <header class="header">
@@ -70,16 +157,14 @@
 
     <!-- AUTO SAFETY LOCK -->
     <section class="card">
-        <h2>Auto Safety Lock (gravity sensor)</h2>
-        <p>
-            The gravity sensor can automatically disable the trigger when the board is not in the correct position.
-        </p>
+        <h2>Auto Safety Lock (stop propeller)</h2>
+        <p>Gravity sensor allows to disable the trigger when the board is not in correct position automatically.</p>
         <label class="switch">
             <input type="checkbox" id="autoLockSwitch">
             <span class="slider"></span>
         </label>
         <p>State: <b id="autoLockState">...</b></p>
-        <h4>Angle threshold to stop the motor</h4>
+        <h4>Angle threshold to lock the controller throttle (stop motor)</h4>
         <select id="degrees">
             <option value="0">0° (disabled)</option>
             <option value="15">15°</option>
@@ -92,6 +177,41 @@
             <option value="50">50°</option>
             <option value="55">55°</option>
         </select>
+    </section>
+
+    <!-- DIRECT CUT SAFETY -->
+    <section class="card">
+        <h2>Direct Safety Stop Motor (Beginners)</h2>
+        <p>Stops the motor immediately (~80ms) when the board angle exceeds the threshold, holding for 3 seconds. A fast safety layer alongside the Auto Safety Lock.</p>
+        <label class="switch">
+            <input type="checkbox" id="directCutSwitch">
+            <span class="slider"></span>
+        </label>
+        <p>State: <b id="directCutState">...</b></p>
+        <h4>Angle threshold for instant Stop propeller</h4>
+        <select id="directCutDegrees">
+            <option value="0">0° (disabled)</option>
+            <option value="15">15°</option>
+            <option value="20">20°</option>
+            <option value="25">25°</option>
+            <option value="30">30°</option>
+            <option value="35">35°</option>
+            <option value="40">40°</option>
+            <option value="45">45°</option>
+            <option value="50">50°</option>
+            <option value="55">55°</option>
+        </select>
+    </section>
+
+    <!-- MOTOR POWER -->
+    <section class="card">
+        <h2>Max Motor Power</h2>
+        <p>Max power: <b id="motorPower">--</b> W</p>
+        <input type="range" id="powerSlider" min="1500" max="2200" step="100" style="width:100%">
+        <div style="display:flex;justify-content:space-between;color:#9ca3af;font-size:0.8rem">
+          <span>1500 W</span><span id="powerVal">--</span><span>2200 W</span>
+        </div>
+        <p class="setting-note">Set the maximum motor power. Changes apply immediately.</p>
     </section>
 
     <!-- RX CODING -->
@@ -116,27 +236,91 @@
         </p>
     </section>
 
+    <!-- EVENT LOG -->
+    <section class="card">
+        <h2>Event Log</h2>
+        <p>Black-box recorder: tracks system events with timestamp and ride number.</p>
+        <button class="button" onclick="showEventLog()">Show Event Log</button>
+        <button class="button" onclick="clearEventLog()" style="background:#dc2626">Clear Log</button>
+		<button class="button" onclick="downloadLog()">Download log file</button>
+    </section>
+	
+
+    <!-- PROPELLER -->
+    <section class="card">
+        <h2>PROPELLER SETUP TOOL</h2>
+		<h3>(Attention! It's a dangerous setting)</h3>
+        <p>Select propeller: setting <b>RPM max</b> and <b>rotation</b> in the VESC</p>
+        <div id="propOptions">
+          <div style="margin:6px 0"><label><input type="radio" name="propSel" value="tecnofly"> Propeller TecnoFly</label>
+            <span id="propTecnoflyInfo" style="color:#9ca3af;font-size:0.85rem"></span></div>
+          <div style="margin:6px 0"><label><input type="radio" name="propSel" value="foildrive"> Propeller Foil Drive</label>
+            <span id="propFoilDriveInfo" style="color:#9ca3af;font-size:0.85rem"></span></div>
+          <div style="margin:6px 0"><label><input type="radio" name="propSel" value="custom"> Custom propeller</label></div>
+        </div>
+        <div id="propCustom" style="display:none;margin:8px 0 0 22px">
+          <div style="margin:4px 0"><label style="display:inline-block;width:120px">RPM</label>
+            <input type="number" id="propRpm" min="2500" max="5500" step="100" value="4300" style="width:90px;background:#333;color:#0f0;border:1px solid #555;padding:3px;border-radius:3px;text-align:right"></div>
+          <div style="margin:4px 0"><label style="display:inline-block;width:120px">Rotation</label>
+            <select id="propDir" style="background:#333;color:#0f0;border:1px solid #555;padding:3px;border-radius:3px">
+              <option value="cw">CW - clockwise</option>
+              <option value="ccw">CCW - counter-clockwise</option>
+            </select>
+            <span id="propDirInfo" style="color:#9ca3af;font-size:0.85rem;margin-left:8px"></span></div>
+        </div>
+        <br>
+        <button class="button" id="propApplyBtn">Apply propeller</button>
+        <p id="propMsg" style="margin-top:8px"></p>
+        <p class="setting-note">Writing requires VESC firmware 6.06; the VESC reboots when applied.</p>
+    </section>
+    <!-- THROTTLE CURVE -->
+    <section class="card">
+        <h2>Throttle response curve</h2>
+        <p>Applied on the receiver before sending the throttle to the VESC. With <b>gamma &lt; 1</b> you get more power for small trigger travel (easier take-off); with <b>gamma &gt; 1</b> you get finer control at the top end. <b>Mix</b> blends the exponential curve with the linear one (0% = linear, 100% = pure exponential). Default gamma 1.00 and mix 0% = linear, identical to before.</p>
+        <p>Gamma <input type="number" id="thrGamma" step="0.05" min="0.40" max="3.00" style="width:90px;background:#333;color:#0f0;border:1px solid #555;padding:3px;border-radius:3px;text-align:right"> &nbsp;&nbsp; Mix <input type="number" id="thrMix" step="1" min="0" max="100" style="width:80px;background:#333;color:#0f0;border:1px solid #555;padding:3px;border-radius:3px;text-align:right"> %</p>
+        <br>
+        <button class="button" id="thrCurveSave">Save curve</button>
+        <p class="setting-note" id="thrCurveMsg"></p>
+    </section>
+	
     <!-- RIDES DATA FILES -->
     <section class="card">
-        <h2>Download rides data files</h2>
-        <p><button class="button" onclick="downloadFiles()">Download all rides (TXT)</button></p>
+        <h2>Rides data files</h2>
+        <p><button class="button" onclick="downloadFiles()">Download all rides (BIN)</button></p>
         <p><button class="button" onclick="downloadJson()">Download all rides (JSON)</button></p>
     </section>
 
     <section class="card">
 		<button class="button" onclick="window.location.href='/index.html'">Back home</button>
 		<br><br>
-        <button class="button" onclick="window.location.href='expert.html'">Expert</button>
+        <button class="button" onclick="window.location.href='expert.html'">Expert user page</button>
 		<br><br>
         <button class="button" onclick="window.location.href='test.html'">Sensors Data Monitor</button>
-            </section>
-
+    </section>	
+	
     <!-- FOOTER -->
     <footer>
         <p>Written by Roberto Assiro – Firmware Ver. <b id="version"></b></p>
         <p>– TecnoFly 2026 –</p>
     </footer>
 
+    <!-- EVENT LOG MODAL -->
+    <div class="modal-overlay" id="eventLogModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h2>?? Event Log</h2>
+                <button class="modal-close" onclick="closeEventLog()">&times;</button>
+            </div>
+            <div class="modal-body" id="eventLogContent">Loading...</div>
+            <div class="modal-footer">
+                <button class="button" onclick="refreshEventLog()">Refresh</button>
+                <button class="button" onclick="clearEventLog()" style="background:#dc2626">Clear Log</button>
+                <button class="button" onclick="closeEventLog()" style="background:#475569">Close</button>
+            </div>
+        </div>
+    </div>
+    <!-- VESC firmware version (serve al PROPELLER SETUP TOOL per il blocco di sicurezza) -->
+    <span id="vescFwVersion" style="display:none">...</span>
     <script type="text/javascript">
     // RIDES COUNTER
     document.addEventListener("DOMContentLoaded", function() {
@@ -197,27 +381,82 @@
         });
     });
 
-    function downloadFiles() {
+    // TOGGLE SWITCH DIRECT CUT
+    document.addEventListener("DOMContentLoaded", function() {
+        const dcSwitch  = document.getElementById("directCutSwitch");
+        const dcState   = document.getElementById("directCutState");
+        const dcDegrees = document.getElementById("directCutDegrees");
+
+        fetch("/readDirectCut")
+            .then(res => res.text())
+            .then(val => {
+                val = parseInt(val.trim());
+                if (val > 0) {
+                    dcSwitch.checked = true;
+                    dcState.textContent = "Active";
+                    dcDegrees.value = val;
+                } else {
+                    dcSwitch.checked = false;
+                    dcState.textContent = "Disabled";
+                    dcDegrees.value = "0";
+                }
+            });
+
+        dcSwitch.addEventListener("change", function() {
+            let newVal;
+            if (dcSwitch.checked) {
+                newVal = 45;
+                dcDegrees.value = "45";
+                dcState.textContent = "Active";
+            } else {
+                newVal = 0;
+                dcDegrees.value = "0";
+                dcState.textContent = "Disabled";
+            }
+            fetch(`/directCut?number=${newVal}`);
+        });
+
+        dcDegrees.addEventListener("change", function() {
+            if (dcSwitch.checked) {
+                let newVal = dcDegrees.value;
+                fetch(`/directCut?number=${newVal}`);
+            }
+        });
+    });
+
+    // Forza il download via fetch→blob: funziona su tutti i browser
+    // indipendentemente dall'estensione del file o dagli header del server.
+    // Il delay tra un file e l'altro evita che il browser blocchi i popup multipli.
+    function forceDownload(url, fileName) {
+        return fetch(url)
+            .then(res => {
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                return res.blob();
+            })
+            .then(blob => {
+                const objUrl = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = objUrl;
+                a.download = fileName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(objUrl), 1000);
+            })
+            .catch(err => console.warn("Download failed: " + fileName, err));
+    }
+
+    async function downloadFiles() {
         for (let i = 0; i < 10; i++) {
-            let fileName = `vescDat${i}.txt`;
-            let link = document.createElement("a");
-            link.href = fileName;
-            link.download = fileName;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            await forceDownload("/vescbin?number=" + i, "vescDat" + i + ".bin");
+            await new Promise(r => setTimeout(r, 400));
         }
     }
 
-    function downloadJson() {
+    async function downloadJson() {
         for (let i = 0; i < 10; i++) {
-            let fileName = `ride${i}.json`;
-            let link = document.createElement("a");
-            link.href = fileName;
-            link.download = fileName;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            await forceDownload("ride?number=" + i, "ride" + i + ".json");
+            await new Promise(r => setTimeout(r, 400));
         }
     }
 
@@ -254,6 +493,28 @@
 
         fetchData("/ver", "version");
         fetchData("/rx_number", "rx_number");
+        
+        // Motor Power slider
+        function loadPower() {
+            fetch("/vescPower")
+                .then(r => r.text())
+                .then(v => {
+                    var w = parseInt(v);
+                    if (!isNaN(w)) {
+                        document.getElementById("motorPower").textContent = w;
+                        document.getElementById("powerSlider").value = w;
+                        document.getElementById("powerVal").textContent = w + " W";
+                    }
+                });
+        }
+        loadPower();
+        document.getElementById("powerSlider").addEventListener("change", function() {
+            var w = this.value;
+            fetch("/vescPower?w=" + w).then(function() {
+                document.getElementById("motorPower").textContent = w;
+                document.getElementById("powerVal").textContent = w + " W";
+            });
+        });
 
         $.get('/readMessage', function(data) {
             const [var1, var2, var3] = data.split(",");
@@ -264,6 +525,142 @@
             console.log('Error in request:', error);
         });
     });
+    // VESC firmware version (per il blocco di sicurezza del propeller tool)
+    document.addEventListener("DOMContentLoaded", function() {
+        fetch("/vescFwVersion").then(function(r){ return r.text(); }).then(function(t) {
+            var el = document.getElementById("vescFwVersion");
+            if (el) el.textContent = String(t).trim();
+        }).catch(function(){ });
+    });
+    // THROTTLE RESPONSE CURVE
+    document.addEventListener("DOMContentLoaded", function() {
+        const gEl = document.getElementById("thrGamma");
+        const mEl = document.getElementById("thrMix");
+        const msg = document.getElementById("thrCurveMsg");
+        function loadThrCurve() {
+            fetch("/read_throttleCurve").then(r => r.json()).then(v => {
+                gEl.value = v.gamma;
+                mEl.value = Math.round(v.mix * 100);
+            }).catch(() => { msg.textContent = "read error"; });
+        }
+        loadThrCurve();
+        document.getElementById("thrCurveSave").addEventListener("click", function() {
+            const q = "/throttleCurve?gamma=" + encodeURIComponent(gEl.value) + "&mix=" + encodeURIComponent(mEl.value / 100);
+            fetch(q).then(r => r.text()).then(t => { msg.textContent = t; })
+                  .catch(() => { msg.textContent = "save error"; });
+        });
+    });
+    async function downloadLog() {
+            await forceDownload("/events.log", "events.log");
+    }
+    // EVENT LOG POPUP
+    function showEventLog() {
+        document.getElementById("eventLogModal").classList.add("show");
+        refreshEventLog();
+    }
+
+    function closeEventLog() {
+        document.getElementById("eventLogModal").classList.remove("show");
+    }
+
+    function refreshEventLog() {
+        const content = document.getElementById("eventLogContent");
+        content.textContent = "Loading...";
+        fetch("/eventlog")
+            .then(res => res.text())
+            .then(data => {
+                if (data.trim() === "" || data.startsWith("No events")) {
+                    content.textContent = "?? No events logged yet.";
+                } else {
+                    // Color highlights
+                    let html = data.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                    html = html.replace(/GRAVITY_ALARM_ON/g, "<span class='highlight-on'>GRAVITY_ALARM_ON</span>");
+                    html = html.replace(/GRAVITY_ALARM_OFF/g, "<span class='highlight-on'>GRAVITY_ALARM_OFF</span>");
+                    html = html.replace(/DIRECT_CUT/g, "<span class='highlight-cut'>DIRECT_CUT</span>");
+                    html = html.replace(/ADXL_READY/g, "<span class='highlight-ready'>ADXL_READY</span>");
+                    html = html.replace(/ADXL_FAIL/g, "<span class='highlight-on'>ADXL_FAIL</span>");
+                    html = html.replace(/SYSTEM BOOT/g, "<span class='highlight-boot'>SYSTEM BOOT</span>");
+                    html = html.replace(/RIDE START/g, "<span class='highlight-ready'>RIDE START</span>");
+                    content.innerHTML = html;
+                }
+            })
+            .catch(err => {
+                content.textContent = "? Error fetching event log.";
+            });
+    }
+
+    function clearEventLog() {
+        if (!confirm("Clear the entire event log?")) return;
+        fetch("/eventclear")
+            .then(() => {
+                refreshEventLog();
+            });
+    }
+
+    // Close modal on overlay click
+    document.addEventListener("DOMContentLoaded", function() {
+        document.getElementById("eventLogModal").addEventListener("click", function(e) {
+            if (e.target === this) closeEventLog();
+        });
+    });
+    // ===== PROPELLER =====
+    // Preset: max ERPM + rotation direction (0 = CW/clockwise, 1 = CCW/counter-clockwise)
+    var MOTOR_POLE_PAIRS = 7;   // ERPM = mechanical RPM x pole pairs (4300 rpm x 7 = 30100 erpm)
+    var PROPELLER_PRESETS = {
+      tecnofly:  { rpm: 4300, invert: 0, label: 'Propeller TecnoFly' },   // 4300 rpm, CW (clockwise)
+      foildrive: { rpm: 4300, invert: 1, label: 'Propeller Foil Drive' } // 4300 rpm, CCW (counter-clockwise)
+    };
+    (function () {
+      function fmtInfo(p) { return p.rpm ? ('(' + p.rpm + ' rpm = ' + (p.rpm * MOTOR_POLE_PAIRS) + ' erpm, ' + (p.invert ? 'CCW' : 'CW') + ')') : '(values not configured)'; }
+      var elT = document.getElementById('propTecnoflyInfo');  if (elT) elT.textContent = fmtInfo(PROPELLER_PRESETS.tecnofly);
+      var elF = document.getElementById('propFoilDriveInfo'); if (elF) elF.textContent = fmtInfo(PROPELLER_PRESETS.foildrive);
+      var customBox = document.getElementById('propCustom');
+      var radios = document.querySelectorAll('input[name=propSel]');
+      for (var i = 0; i < radios.length; i++) {
+        radios[i].addEventListener('change', function () {
+          customBox.style.display = (this.value === 'custom' && this.checked) ? 'block' : 'none';
+        });
+      }
+      var dirSel = document.getElementById('propDir');
+      function updateDirInfo() {
+        var el = document.getElementById('propDirInfo');
+        if (el && dirSel) el.textContent = (dirSel.value === 'cw') ? 'motor spins clockwise (forward)' : 'motor spins counter-clockwise (reverse)';
+      }
+      if (dirSel) { dirSel.addEventListener('change', updateDirInfo); updateDirInfo(); }
+      var btn = document.getElementById('propApplyBtn');
+      if (!btn) return;
+      btn.onclick = function () {
+        var msg = document.getElementById('propMsg');
+        var sel = document.querySelector('input[name=propSel]:checked');
+        if (!sel) { msg.textContent = 'Select a propeller.'; return; }
+        var rpm, invert;
+        if (sel.value === 'custom') {
+          rpm = parseFloat(document.getElementById('propRpm').value);
+          invert = (document.getElementById('propDir').value === 'cw') ? 0 : 1;
+          if (!isFinite(rpm) || rpm < 2500 || rpm > 5500) { msg.textContent = 'Custom: RPM must be between 2500 and 5500.'; return; }
+        } else {
+          var p = PROPELLER_PRESETS[sel.value];
+          if (!p || !p.rpm) { msg.textContent = 'Preset not configured: values missing.'; return; }
+          rpm = p.rpm; invert = p.invert;
+        }
+        var erpm = Math.round(rpm * MOTOR_POLE_PAIRS);
+        var verEl = document.getElementById('vescFwVersion');
+        var ver = verEl ? (verEl.textContent || '').trim() : '';
+        if (ver !== '6.06') { msg.textContent = 'BLOCKED: VESC firmware ' + ver + ' - 6.06 required.'; return; }
+        if (invert !== 0) {
+          if (!confirm('WARNING: reversing the rotation direction.\nMake sure the propeller is free and nobody is nearby.\nProceed?')) return;
+        }
+        msg.textContent = 'Applying...';
+        fetch('/vescParams?l_max_erpm=' + encodeURIComponent(erpm) + '&m_invert_direction=' + invert)
+          .then(function (r) { return r.text(); })
+          .then(function (t) {
+            msg.textContent = (t.indexOf('OK') >= 0)
+              ? ('OK: propeller applied (' + rpm + ' rpm = ' + erpm + ' erpm, ' + (invert ? 'CCW' : 'CW') + ')')
+              : t;
+          })
+          .catch(function () { msg.textContent = 'Communication error with the board.'; });
+      };
+    })();
     </script>
 </body>
 </html>

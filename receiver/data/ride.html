@@ -8,7 +8,6 @@
     <link rel="stylesheet" href="uplot.min.css">
     <script src="jquery.js"></script>
     <script src="uplot.iife.min.js"></script>
-    <!-- ★ Algoritmo condiviso ★ -->
     <script src="rideAnalysis.js"></script>
     <style>
       .chart-wrapper {
@@ -20,6 +19,16 @@
       }
       .u-over {
         background-color: transparent !important;
+      }
+      /* ── Best wave row: banda verde ── */
+      tr.best-wave-row td {
+        background: rgba(34, 197, 94, 0.13) !important;
+        border-bottom: 1px solid rgba(34, 197, 94, 0.35);
+        color: #bbf7d0;
+        font-weight: 600;
+      }
+      tr.best-wave-row td:first-child {
+        border-left: 3px solid #22c55e;
       }
     </style>
 </head>
@@ -34,46 +43,41 @@
     <!-- SUMMARY CARD -->
     <section class="card">
         <h3>Ride summary</h3>
-        <p>
-            Total time: <b id="Tminutes"></b>:<b id="Tseconds"></b>
-            &nbsp;·&nbsp;
-            Motoring time: <b id="Mminutes"></b>:<b id="Mseconds"></b>
-        </p>
-        <p>
-            Power avg: <b id="powerAverage"></b> W
-            &nbsp;·&nbsp;
-            Max power: <b id="maxPower"></b> W
-            &nbsp;·&nbsp;
-            Max current: <b id="maxCurrent"></b> A
-            &nbsp;·&nbsp;
-            Min voltage: <b id="minVoltage"></b> V
-        </p>
-        <p>
-            Battery energy: <b id="watthour"></b> Wh
-            &nbsp;·&nbsp;
-            Max temp: <b id="maxTemp"></b> °C
-        </p>
-        <p>
-            Waves / pumpings: <b id="waveJson"></b>
-            &nbsp;·&nbsp;
-            Takeoffs: <b id="takeOffJson"></b>
-            &nbsp;·&nbsp;
-            Best wave / pumping time: <b id="waveBestTimeJson"></b> s
-        </p>
-        <p>
-            Rider performance vote: <b id="powerIndex"></b> (0–10)
-        </p>
+        <p>Total time: <b id="rideTime">--:--</b></p>
+        <p>Motoring time: <b id="motorTime">--:--</b></p>
+        <p>Power average: <b id="powerAverage"></b> W</p>
+        <p>Max power: <b id="maxPower"></b> W</p></p>
+        <p>Max current: <b id="maxCurrent"></b> A</p>
+        <p>Min voltage: <b id="minVoltage"></b> V</p>
+        <p>Battery energy used: <b id="watthour"></b> Wh</p>
+        <p>Max temp: <b id="maxTemp"></b> °C</p></p>
+        <p>Waves / pumpings: <b id="waveJson"></b></p>
+        <p>Takeoffs: <b id="takeOffJson"></b></p>
+        <p>Best wave / pumping time: <b id="waveBestTimeJson">--:--</b></p>
+        <p>Rider performance vote: <b id="powerIndex"></b> (0 – 10)</p>
+        <p>Rider performance score: <b id="score"></b> points</p>			
     </section>
 
     <!-- ANALYSIS TABLE -->
     <section class="card">
         <h2>Rides analysis</h2>
+        <p>
+          <label for="minWaveSec"><b>Minimum wave / pump time</b></label>
+          <select id="minWaveSec">
+            <option value="5">5 seconds</option>
+            <option value="8" selected>8 seconds</option>
+            <option value="10">10 seconds</option>
+            <option value="30">30 seconds</option>
+            <option value="60">60 seconds</option>
+          </select>
+          <span style="color:#9ca3af;font-size:0.85rem;margin-left:8px">shortest session counted as a wave / pump</span>
+        </p>
         <table id="reportTable">
             <thead>
                 <tr>
                     <th>Type</th>
                     <th>Number</th>
-                    <th>Time (s)</th>
+                    <th>Time</th>
                     <th>Start from</th>
                     <th>End</th>
                 </tr>
@@ -126,37 +130,74 @@
     </section>
 
     <!-- DOWNLOAD + SENSOR INFO -->
-	    <!-- RIDES DATA FILES -->
+    <!-- RIDES DATA FILES -->
     <section class="card">
         <h2>Download ride data file</h2>
-        <p><button class="button" onclick="downloadtxt()">Download ride file(TXT)</button></p>
-        <p><button class="button" onclick="downloadJson()">Download ride file(JSON)</button></p>
-		<br> <br>
+        <p><button class="button" onclick="downloadbin()">Download ride file (bin)</button></p>
+        <p><button class="button" onclick="downloadJson()">Download ride file (json)</button></p>
+        <br><br>
         <p>On this device the accelerometer sensor is <b id="adxl345"></b></p>
     </section>
-
+	<div id="vescPopup" class="vesc-popup">
+		<div class="vesc-popup-content">
+			<h2>⚠️ Allert Unit issue</h2>
+			<h3>VESC Fault code</h3>
+			<h3>registered in this ride</h3>
+			<p id="vescFaultText"></p>
+			<button onclick="closeVescPopup()">Close</button>
+		</div>
+	</div>
+	
     <!-- FOOTER -->
     <footer>
         <p>Written by R. Assiro – Firmware Ver. <b id="version"></b></p>
         <p>– TecnoFly 2026 –</p>
     </footer>
+</body>
 
     <style>
-      .rssi-wrap { max-width:1100px; margin:0 auto 4px; padding:0; display:grid; grid-template-columns:1fr; gap:14px; }
-      .card-rssi { background:radial-gradient(circle at top,rgba(15,23,42,.96),#020617); border-radius:12px; border:1px solid rgba(34,197,94,.4); padding:18px 20px; }
-      .rssi-number { font-family:'Share Tech Mono',monospace; font-size:32px; color:#e5e7eb; margin-top:6px; }
-      .rssi-number .unit { font-size:14px; color:#9ca3af; margin-left:4px; }
-      .rssi-bar-track { width:100%; height:14px; border-radius:7px; overflow:hidden; background:rgba(15,23,42,.9); border:1px solid rgba(148,163,184,.5); margin:12px 0 8px; }
-      .rssi-bar-fill { height:100%; width:0%; transition:width .45s ease,background .45s ease; }
-      .rssi-meta { display:flex; justify-content:space-between; font-family:'Share Tech Mono',monospace; font-size:11px; color:#9ca3af; }
-      .rssi-quality { font-size:14px; font-weight:700; letter-spacing:2px; }
-      .signal-bars { display:flex; align-items:flex-end; gap:5px; height:52px; }
-      .signal-bars .bar { width:16px; border-radius:3px 3px 0 0; background:rgba(255,255,255,.08); transition:background .4s ease; }
-      .signal-bars .bar:nth-child(1){height:20%} .signal-bars .bar:nth-child(2){height:40%}
-      .signal-bars .bar:nth-child(3){height:60%} .signal-bars .bar:nth-child(4){height:80%}
-      .signal-bars .bar:nth-child(5){height:100%}
-      .loss-pill { display:inline-block; padding:4px 10px; border-radius:999px; font-family:'Share Tech Mono',monospace; font-size:11px; background:rgba(248,113,113,.14); color:#fecaca; border:1px solid rgba(248,113,113,.5); }
-      .loss-pill.ok { background:rgba(34,197,94,.14); color:#bbf7d0; border-color:rgba(34,197,94,.5); }
+	.rssi-wrap { max-width:1100px; margin:0 auto 4px; padding:0; display:grid; grid-template-columns:1fr; gap:14px; }
+	.card-rssi { background:radial-gradient(circle at top,rgba(15,23,42,.96),#020617); border-radius:12px; border:1px solid rgba(34,197,94,.4); padding:18px 20px; }
+	.rssi-number { font-family:'Share Tech Mono',monospace; font-size:32px; color:#e5e7eb; margin-top:6px; }
+	.rssi-number .unit { font-size:14px; color:#9ca3af; margin-left:4px; }
+	.rssi-bar-track { width:100%; height:14px; border-radius:7px; overflow:hidden; background:rgba(15,23,42,.9); border:1px solid rgba(148,163,184,.5); margin:12px 0 8px; }
+	.rssi-bar-fill { height:100%; width:0%; transition:width .45s ease,background .45s ease; }
+	.rssi-meta { display:flex; justify-content:space-between; font-family:'Share Tech Mono',monospace; font-size:11px; color:#9ca3af; }
+	.rssi-quality { font-size:14px; font-weight:700; letter-spacing:2px; }
+	.signal-bars { display:flex; align-items:flex-end; gap:5px; height:52px; }
+	.signal-bars .bar { width:16px; border-radius:3px 3px 0 0; background:rgba(255,255,255,.08); transition:background .4s ease; }
+	.signal-bars .bar:nth-child(1){height:20%} .signal-bars .bar:nth-child(2){height:40%}
+	.signal-bars .bar:nth-child(3){height:60%} .signal-bars .bar:nth-child(4){height:80%}
+	.signal-bars .bar:nth-child(5){height:100%}
+    .loss-pill { display:inline-block; padding:4px 10px; border-radius:999px; font-family:'Share Tech Mono',monospace; font-size:11px; background:rgba(248,113,113,.14); color:#fecaca; border:1px solid rgba(248,113,113,.5); }
+    .loss-pill.ok { background:rgba(34,197,94,.14); color:#bbf7d0; border-color:rgba(34,197,94,.5); }
+	  
+	.vesc-popup{
+		display:none;
+		position:fixed;
+		inset:0;
+		background:rgba(0,0,0,.7);
+		z-index:9999;
+	}
+
+	.vesc-popup-content{
+		position:absolute;
+		top:50%;
+		left:50%;
+		transform:translate(-50%,-50%);
+		width:90%;
+		max-width:400px;
+		background:white;
+		color:black;
+		padding:20px;
+		border-radius:12px;
+		text-align:center;
+	}
+
+	.vesc-popup-content button{
+		margin-top:15px;
+		padding:10px 20px;
+	}
     </style>
 
     <script type="text/javascript">
@@ -166,8 +207,8 @@ const parametro  = new URLSearchParams(window.location.search);
 const numero     = parametro.get("ride");
 const numeroRide = parseInt(numero) + 1;
 const fileNumber = parseInt(numero);
-const fileNameTxt   = `vescDat${fileNumber}.txt`;
-const fileNameJson   = `ride${fileNumber}.json`;
+const fileNameBin  = `vescDat${fileNumber}.bin`;
+const fileNameJson = `ride${fileNumber}.json`;
 document.getElementById("rideNumber").innerHTML = numeroRide;
 
 window.waveIntervals = [];
@@ -184,38 +225,63 @@ function addRowToTable(type, number, duration, start, end, highlightClass) {
     document.getElementById("reportBody").appendChild(tr);
 }
 
-function downloadtxt() {
-		let link = document.createElement("a");
-		link.href = fileNameTxt;
-		link.download = fileNameTxt;
-		document.body.appendChild(link);
-		link.click();
-		document.body.removeChild(link);
+// ── Download ────────────────────────────────────────────────
+function downloadbin() {
+    let link = document.createElement("a");
+    link.href = fileNameBin;
+    link.download = fileNameBin;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function showVescPopup(code){
+    const txt =
+        vescFaultCodes[code] ||
+        ("Unknown fault code " + code);
+    document.getElementById("vescFaultText").innerHTML =
+        "<b>Code number:</b> " + code +
+        "<br><b>Description:</b> " + txt;
+    document.getElementById("vescPopup").style.display = "block";
+}
+
+function closeVescPopup(){
+    document.getElementById("vescPopup").style.display = "none";
 }
 
 function downloadJson() {
-		let link = document.createElement("a");
-		link.href = fileNameJson;
-		link.download = fileNameJson;
-		document.body.appendChild(link);
-		link.click();
-		document.body.removeChild(link);
+    let link = document.createElement("a");
+    link.href = fileNameJson;
+    link.download = fileNameJson;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }
-	
-// ── rideAnalysis (usa rideAnalysis.js condiviso) ────────────
+
+// ── fmtTime: converte secondi interi in "mm:ss" ─────────────
+function fmtTime(secs) {
+    if (secs === undefined || secs === null || isNaN(+secs)) return "--:--";
+    const s = Math.round(+secs);
+    return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+}
+
+// ── rideAnalysis (usa rideAnalysis.js condiviso) ─────────────────────────
 async function rideAnalysis() {
     const reportBody = document.getElementById("reportBody");
     reportBody.innerHTML = "<tr><td colspan='5'>Analyzing ride, please wait…</td></tr>";
 
-    // Leggi stato accelerometro dall'elemento già popolato da fetchDataText
-    const adxlEl   = document.getElementById("adxl345");
-    const hasAdxl  = !adxlEl || adxlEl.textContent.trim().toLowerCase() !== "not present";
+    const adxlEl  = document.getElementById("adxl345");
+    const hasAdxl = !adxlEl || adxlEl.textContent.trim().toLowerCase() !== "not present";
 
     try {
-        const r = await fetchAndAnalyze(fileNumber, hasAdxl);
+        // fix 20/10/2026: filtro durata minima onda/pump scelto dall'utente
+        const selSec = document.getElementById("minWaveSec");
+        const minSurfSec = selSec ? (parseInt(selSec.value, 10) || 8) : 8;
+        const r = await fetchAndAnalyze(fileNumber, hasAdxl, minSurfSec);
 
-        // salva intervalli foil per il grafico
+        // salva intervalli foil per il grafico e lancia il plot con gli stessi dati
         window.waveIntervals = r.foils.map(f => ({ start: f.start, end: f.end }));
+        setupPlot(r.records);
 
         reportBody.innerHTML = "";
 
@@ -225,23 +291,18 @@ async function rideAnalysis() {
         }
 
         // ── Righe di riepilogo ──
-        addRowToTable("Total Take offs",          r.takeoffs.length, "-",                        "-", "-", "");
-        addRowToTable("Total Waves or Pumps",     r.foils.length,    "-",                        "-", "-", "");
-        addRowToTable("Best time on Wave or Pump","-",               r.waveBestTime + " sec",   "-", "-", "best-wave");
+        addRowToTable("Total Take offs",           r.takeoffs.length, "-",                       "-", "-", "");
+        addRowToTable("Total Waves or Pumps",      r.foils.length,    "-",                       "-", "-", "");
+        addRowToTable("Best time on Wave or Pump", "-",               fmtTime(r.waveBestTime),   "-", "-", "best-wave");
 
-        // ── Righe di dettaglio takeoff ──
         for (const t of r.takeoffs) {
             const cls = t.duration === r.longestTakeoff ? "longest-takeoff" : "";
-            addRowToTable("TakeOff", t.number, t.duration + " s", t.start, t.end, cls);
+            addRowToTable("TakeOff", t.number, fmtTime(t.duration), t.start, t.end, cls);
         }
-
-        // ── Righe di dettaglio foil ──
         for (const f of r.foils) {
-            const cls = f.duration === r.waveBestTime ? "best-wave" : "";
-            addRowToTable("Foil / Wave", f.number, f.duration + " s", f.start, f.end, cls);
+            const cls = f.duration === r.waveBestTime ? "best-wave-row" : "";
+            addRowToTable("Foil / Wave", f.number, fmtTime(f.duration), f.start, f.end, cls);
         }
-
-        // ── Righe di dettaglio cadute (collassate) ──
         if (r.falls.length > 0) {
             addRowToTable("Falls detected", r.falls.length, "-", r.falls[0].time, r.falls[r.falls.length - 1].time, "");
         }
@@ -251,12 +312,49 @@ async function rideAnalysis() {
     }
 }
 
-// ── jQuery ready: dati dal server ──────────────────────────
+const vescFaultCodes = {
+    0:  "None",
+    1:  "Over Voltage",
+    2:  "Under Voltage",
+    3:  "DRV",
+    4:  "Absolute Over Current",
+    5:  "Over Temp Mosfet",
+    6:  "Over Temp Motor",
+    7:  "Gate Driver Over Voltage",
+    8:  "MCU Under Voltage",
+    9:  "Booting from Watchdog Reset",
+    10: "Gate Driver Under Voltage",
+    11: "Encoder SPI",
+    12: "Encoder Sincos Below Min Amplitude",
+    13: "Encoder Sincos Above Max Amplitude",
+    14: "Flash Corruption",
+    15: "High Offset Current Sensor 1",
+    16: "High Offset Current Sensor 2",
+    17: "High Offset Current Sensor 3",
+    18: "Unbalanced Currents",
+    19: "BRK",
+    20: "Resolver LOT",
+    21: "Resolver DOS",
+    22: "Resolver LOS",
+    23: "Flash Corruption App Config",
+    24: "Flash Corruption MC Config",
+    25: "Encoder No Magnet",
+    26: "Encoder Magnet Too Strong",
+    27: "Phase Filter",
+    28: "Encoder Fault",
+    29: "LV Output Fault"
+};
+
+
+// ── jQuery ready: dati summary dal server JSON ──────────────
 $(document).ready(function () {
     $.getJSON('ride?number=' + numero, function (data) {
         data.powerIndex = data.powerIndex / 10;
-        document.getElementById("Tminutes").innerHTML      = data.Tminutes;
-        document.getElementById("Tseconds").innerHTML      = data.Tseconds;
+        // Tempi in formato mm:ss combinando i campi minuti e secondi del server
+        document.getElementById("rideTime").innerHTML  =
+        String(data.Tminutes).padStart(2,"0") + ":" + String(data.Tseconds).padStart(2,"0");
+        document.getElementById("motorTime").innerHTML =
+        String(data.Mminutes).padStart(2,"0") + ":" + String(data.Mseconds).padStart(2,"0");
         document.getElementById("maxPower").innerHTML      = data.maxPower.toFixed(0);
         document.getElementById("minVoltage").innerHTML    = data.minVoltage.toFixed(1);
         document.getElementById("maxCurrent").innerHTML    = data.maxCurrent.toFixed(1);
@@ -264,17 +362,24 @@ $(document).ready(function () {
         document.getElementById("powerAverage").innerHTML  = data.powerAverage;
         document.getElementById("powerIndex").innerHTML    = data.powerIndex.toFixed(1);
         document.getElementById("watthour").innerHTML      = data.watthour.toFixed(1);
-        document.getElementById("Mminutes").innerHTML      = data.Mminutes;
-        document.getElementById("Mseconds").innerHTML      = data.Mseconds;
-        document.getElementById("waveBestTimeJson").innerHTML = data.waveBestTime;
+        // waveBestTime dal server è in secondi → mm:ss
+        const wbt = parseInt(data.waveBestTime) || 0;
+        document.getElementById("waveBestTimeJson").innerHTML =
+            String(Math.floor(wbt / 60)).padStart(2,"0") + ":" + String(wbt % 60).padStart(2,"0");
         document.getElementById("waveJson").innerHTML      = data.wave;
         document.getElementById("takeOffJson").innerHTML   = data.takeOff;
+        document.getElementById("score").innerHTML         = data.score;
 
         if (data.rssiAvgSes !== undefined) {
             document.getElementById('rssiAvgSesRide').innerHTML =
                 data.rssiAvgSes.toFixed(1) + '<span class="unit">dBm</span>';
             updateRideRssiUI(data.rssiAvgSes, data.lossPercent);
         }
+		
+		if (data.vesc > 0) {
+			showVescPopup(data.vesc);
+		}
+		
     });
 
     function fetchDataText(url, elementId) {
@@ -310,34 +415,38 @@ function updateRideRssiUI(rssiAvg, lossPercent) {
     }
 }
 
-// ── Plot ────────────────────────────────────────────────────
+// ── Plot (usa i record già parsati da rideAnalysis.js) ──────
+// Ordine colonne identico al vecchio CSV:
+// rpm, voltage, current, watts, throttle, battery, wh, temp, powerAvg, rms, peak, tilt, pitch, roll
 const seriesNames = ["RPM","Voltage (V)","Battery Current (A)","Power (W)","Throttle (%)","Battery (%)","Power (Wh)","Temperature (°C)","Power Avg (W)","RMS xyz","Peak xyz","Tilt xy","Pitch","Roll"];
 const colors      = ["blue","orange","green","red","cyan","brown","gray","pink","black","blue","red","yellow","green","brown"];
 
-async function fetchDataFile() {
-    const response = await fetch(fileName);
-    const data = await response.text();
-    return data.trim().split("\n").map(line => line.split(",").map(e => e.trim()));
-}
+function setupPlot(records) {
+    const labels    = records.map(r => r.time);
+    const xVals     = records.map((_, i) => i);
 
-function parseData(lines) {
-    const labels = [];
-    const series = Array.from({ length: seriesNames.length }, () => []);
-    for (const row of lines) {
-        labels.push(row[0]);
-        for (let i = 0; i < seriesNames.length; i++) {
-            series[i].push(parseFloat(row[i + 1]));
-        }
-    }
-    return { labels, series };
-}
+    // estrai le 14 serie nello stesso ordine del vecchio CSV
+    const seriesData = [
+        records.map(r => r.rpm),
+        records.map(r => r.voltage),
+        records.map(r => r.current),
+        records.map(r => r.watts),
+        records.map(r => r.throttle),
+        records.map(r => r.battery),
+        records.map(r => r.wh),
+        records.map(r => r.temp),
+        records.map(r => r.powerAvg),
+        records.map(r => r.rms),
+        records.map(r => r.peak),
+        records.map(r => r.tilt),
+        records.map(r => r.pitch),
+        records.map(r => r.roll),
+    ];
 
-function setupPlot(labels, seriesData) {
     const container = document.querySelector('.chart-wrapper');
     const width     = container.clientWidth - 20;
-    const xVals     = labels.map((_, i) => i);
-    const series    = [{ label: "Time", value: (_, i) => labels[i] }];
 
+    const series = [{ label: "Time", value: (_, i) => labels[i] }];
     for (let i = 0; i < seriesNames.length; i++) {
         series.push({
             label:  seriesNames[i],
@@ -372,10 +481,10 @@ function setupPlot(labels, seriesData) {
                                 if (u.series[i].show)
                                     html += `<span style="color:${colors[i-1]}">${u.series[i].label}</span>: ${u.data[i][idx]}<br>`;
                             }
-                            tooltip.innerHTML      = html;
-                            tooltip.style.left     = x + 10 + "px";
-                            tooltip.style.top      = y + 10 + "px";
-                            tooltip.style.display  = "block";
+                            tooltip.innerHTML     = html;
+                            tooltip.style.left    = x + 10 + "px";
+                            tooltip.style.top     = y + 10 + "px";
+                            tooltip.style.display = "block";
                         } else {
                             tooltip.style.display = "none";
                         }
@@ -386,10 +495,14 @@ function setupPlot(labels, seriesData) {
         }]
     };
 
-    const uplot = new uPlot(opts, [xVals, ...seriesData], document.getElementById("chart"));
+    // rimuovi eventuale grafico precedente
+    const chartEl = document.getElementById("chart");
+    chartEl.innerHTML = "";
 
+    const uplot = new uPlot(opts, [xVals, ...seriesData], chartEl);
+
+    // ── pan & zoom ──
     let isPanning = false, panStartX = 0, panMin = 0, panMax = 0;
-
     uplot.root.addEventListener("mousedown", e => {
         if (e.button !== 0) return;
         e.preventDefault(); isPanning = true; panStartX = e.clientX;
@@ -409,7 +522,6 @@ function setupPlot(labels, seriesData) {
         uplot.setScale("x", { min: nMin, max: nMax });
     });
     window.addEventListener("mouseup", () => { isPanning = false; uplot.root.style.cursor = "grab"; });
-
     uplot.root.addEventListener("wheel", e => {
         e.preventDefault();
         const factor = e.deltaY > 0 ? 1.2 : 0.8;
@@ -421,21 +533,21 @@ function setupPlot(labels, seriesData) {
         const pct      = (idx - min) / (max - min);
         uplot.setScale("x", { min: idx - newRange * pct, max: idx + newRange * (1 - pct) });
     }, { passive: false });
-
     uplot.root.addEventListener("dblclick", () => { uplot.setScale("x", { min: null, max: null }); });
-
     window.addEventListener("resize", () => {
         uplot.setSize({ width: container.clientWidth - 20, height: 500 });
     });
 }
 
-fetchDataFile().then(data => {
-    const { labels, series } = parseData(data);
-    setupPlot(labels, series);
-});
-
-// start analysis automatically on load
+// ── avvio automatico all'apertura della pagina ──────────────
+// Il grafico viene costruito dentro rideAnalysis() con i dati
+// già parsati dal .bin, evitando un doppio fetch.
 window.addEventListener("load", () => { rideAnalysis(); });
+// fix 20/10/2026: al cambio del filtro durata minima, rifai l'analisi
+document.addEventListener("DOMContentLoaded", function () {
+    const sel = document.getElementById("minWaveSec");
+    if (sel) sel.addEventListener("change", function () { rideAnalysis(); });
+});
 
     </script>
 </body>

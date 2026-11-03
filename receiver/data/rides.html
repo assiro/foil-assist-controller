@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TecnoFly – Foil Assist Dashboard</title>
+<link href="assist.css" rel="stylesheet" type="text/css">
+<script src="jquery.js"></script>
+<script src="rideAnalysis.js"></script>
+<style>
+      /* Best foil time row: banda verde */
+      tr.best-wave-row td {
+        background: rgba(34, 197, 94, 0.13) !important;
+        border-bottom: 1px solid rgba(34, 197, 94, 0.35);
+        color: #bbf7d0;
+        font-weight: 600;
+      }
+      tr.best-wave-row td:first-child {
+        border-left: 3px solid #22c55e;
+      }
+</style>
+<script type="text/javascript">
+
+    // ── fmtTime ─────────────────────────────────────────────
+    function fmtTime(secs) {
+        if (secs === undefined || secs === null || isNaN(secs)) return "--:--";
+        const s = Math.round(secs);
+        return String(Math.floor(s / 60)).padStart(2,"0") + ":" + String(s % 60).padStart(2,"0");
+    }
+
+    // ── Ordine rimappato: slot 0 = ultimo ride, slot 9 = il più vecchio ──
+    // fileNumber (0-based) è l'indice del file bin dell'ultimo ride.
+    // L'array rideMap[displayPos] = fileIndex  (0..9)
+    // displayPos 0 → "Ride 1" (il più recente)
+    let rideMap = [0,1,2,3,4,5,6,7,8,9]; // default, sovrascritto dopo fetch
+    let lastFileNumber = 0;
+
+    function buildRideMap(lastIdx) {
+        // lastIdx è il fileIndex (0-based) dell'ultimo ride scritto
+        // displayPos 0 → lastIdx, 1 → lastIdx-1, … con wrap mod 10
+        const map = [];
+        for (let d = 0; d < 10; d++) {
+            map.push(((lastIdx - d) + 10) % 10);
+        }
+        return map;
+    }
+
+    // ── Popola le card con i dati JSON del server ────────────
+    function populateCards(map) {
+        for (let d = 0; d < 10; d++) {
+            const fileIdx = map[d];   // indice del file bin
+            const dispNum = d + 1;    // numero display (1–10)
+            $.getJSON(`ride?number=${fileIdx}`, function (data) {
+                if (!data) return;
+                data.powerIndex = data.powerIndex / 10;
+                const mm = String(data.Tminutes).padStart(2,"0");
+                const ss = String(data.Tseconds).padStart(2,"0");
+                const mm2 = String(data.Mminutes).padStart(2,"0");
+                const ss2 = String(data.Mseconds).padStart(2,"0");
+                document.getElementById(`rideTime${dispNum}`).innerHTML    = mm + ":" + ss;
+                document.getElementById(`motorTime${dispNum}`).innerHTML   = mm2 + ":" + ss2;
+                document.getElementById(`maxPower${dispNum}`).innerHTML    = data.maxPower.toFixed(0);
+                document.getElementById(`minVoltage${dispNum}`).innerHTML  = data.minVoltage.toFixed(1);
+                document.getElementById(`maxCurrent${dispNum}`).innerHTML  = data.maxCurrent.toFixed(1);
+                document.getElementById(`maxTemp${dispNum}`).innerHTML     = data.maxTemp.toFixed(1);
+                document.getElementById(`powerAverage${dispNum}`).innerHTML= data.powerAverage;
+                document.getElementById(`watthour${dispNum}`).innerHTML    = data.watthour.toFixed(1);
+                document.getElementById(`powerIndex${dispNum}`).innerHTML  = data.powerIndex.toFixed(1);
+                document.getElementById(`score${dispNum}`).innerHTML       = data.score;
+                // aggiorna il link "View" del bottone
+                document.getElementById(`btnView${dispNum}`).onclick =
+                    () => window.location.href = `ride.html?ride=${fileIdx}`;
+                document.getElementById(`btnView${dispNum}`).textContent = `View Ride ${dispNum}`;
+            });
+        }
+    }
+
+    // ── Analisi rides (rimappata) ────────────────────────────
+    async function rideAnalysis(map) {
+        const reportBody = document.getElementById("reportBody");
+        reportBody.innerHTML = "<tr><td colspan='4'>Analyzing rides, please wait…</td></tr>";
+
+        let hasAdxl = true;
+        try {
+            const r = await fetch("/checkAdxl");
+            if (r.ok) hasAdxl = (await r.text()).trim().toLowerCase() !== "not present";
+        } catch (_) {}
+
+        let firstRow = true;
+        let globalBestTime = 0;
+        const rows = []; // accumuliamo prima di inserire, per trovare il best globale
+
+        for (let d = 0; d < 10; d++) {
+            const fileIdx  = map[d];
+            const dispNum  = d + 1;
+            try {
+                const r = await fetchAndAnalyze(fileIdx, hasAdxl);
+                if (firstRow) { reportBody.innerHTML = ""; firstRow = false; }
+
+                const bestSecs = r.waveBestTime || 0;
+                if (bestSecs > globalBestTime) globalBestTime = bestSecs;
+
+                rows.push({ dispNum, fileIdx, r });
+
+                addSummaryRow(`Ride ${dispNum}`, "TakeOffs",      r.takeoffs.length,       fileIdx, "");
+                addSummaryRow(`Ride ${dispNum}`, "Foil sessions", r.foils.length,          fileIdx, "");
+                addSummaryRow(`Ride ${dispNum}`, "Best foil",     fmtTime(bestSecs),       fileIdx, "", bestSecs);
+
+            } catch (_) {
+                if (firstRow) { reportBody.innerHTML = ""; firstRow = false; }
+                addSummaryRow(`Ride ${dispNum}`, "—", "no file", fileIdx, "");
+            }
+        }
+
+        if (firstRow) {
+            reportBody.innerHTML = "<tr><td colspan='4'>No ride files found.</td></tr>";
+            return;
+        }
+
+        // Evidenzia in verde il rigo col best foil time globale
+        highlightBestRow(globalBestTime);
+    }
+
+    // ── Aggiunge una riga alla tabella ───────────────────────
+    // timeVal è usato solo per il confronto del best globale (data-attr)
+    function addSummaryRow(ride, type, value, fileIdx, cls, timeVal) {
+        const tr = document.createElement("tr");
+        if (cls) tr.className = cls;
+        if (timeVal !== undefined) tr.dataset.bestTime = timeVal;
+
+        [ride, type, value].forEach(v => {
+            const td = document.createElement("td");
+            td.textContent = v !== undefined ? v : "-";
+            tr.appendChild(td);
+        });
+
+        const tdLink = document.createElement("td");
+        const a = document.createElement("a");
+        a.href = `ride.html?ride=${fileIdx}`;
+        a.textContent = "View »";
+        tdLink.appendChild(a);
+        tr.appendChild(tdLink);
+
+        document.getElementById("reportBody").appendChild(tr);
+    }
+
+    // ── Evidenzia la riga del best foil time globale ─────────
+    function highlightBestRow(globalBest) {
+        if (!globalBest) return;
+        document.querySelectorAll("#reportBody tr[data-best-time]").forEach(tr => {
+            if (parseFloat(tr.dataset.bestTime) === globalBest) {
+                tr.classList.add("best-wave-row");
+            }
+        });
+    }
+
+    // ── Helpers fetch ────────────────────────────────────────
+    function fetchData(url, id) {
+        const x = new XMLHttpRequest();
+        x.onreadystatechange = function () {
+            if (this.readyState === 4 && this.status === 200)
+                document.getElementById(id).innerHTML = this.responseText;
+        };
+        x.open("GET", url, true); x.send();
+    }
+    function fetchDatas(url, id) { $.get(url, d => $("#" + id).text(d)); }
+
+    // ── Recupera il record assoluto ─────────────────────────
+    function fetchRecord() {
+        $.get("/readRecord", function(raw) {
+            const secs = parseInt(raw);
+            if (isNaN(secs) || secs === 0) {
+                $("#absRecord").text("--:--");
+                return;
+            }
+            const m = Math.floor(secs / 60);
+            const s = secs % 60;
+            $("#absRecord").text(
+                String(m).padStart(2,"0") + ":" + String(s).padStart(2,"0")
+            );
+        }).fail(function() {
+            $("#absRecord").text("--:--");
+        });
+    }
+
+    // ── Init al caricamento pagina ───────────────────────────
+    $(document).ready(function () {
+        fetchDatas("/rx_number", "rx_number");
+        fetchData("/ver", "version");
+        fetchRecord();
+
+                // fix 22/10/2026: l'indice del ride CORRENTE arriva da /json (valore live della RX).
+        // /fileNumber resta solo come fallback: e' una cache letta all'accensione.
+        function ridesStart(idx) {
+            lastFileNumber = (idx >= 0 && idx <= 9) ? idx : 0;
+            rideMap = buildRideMap(lastFileNumber);
+            populateCards(rideMap);
+            rideAnalysis(rideMap);
+        }
+        $.getJSON("/json", function(live) {
+            if (live && typeof live.ride === "number") {
+                ridesStart(live.ride);
+            } else {
+                $.get("/fileNumber", function(raw) {
+                    ridesStart(parseInt(raw));
+                }).fail(function() { ridesStart(0); });
+            }
+        }).fail(function() {
+            $.get("/fileNumber", function(raw) {
+                ridesStart(parseInt(raw));
+            }).fail(function() { ridesStart(0); });
+        });
+    });
+
+    </script>
+<style>
+.bg-cf{position:fixed;inset:0;z-index:-1;background:#1e1f20 url(fiber.jpg) repeat}
+.bg-cf::after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at 50% 0,rgba(34,211,238,.04) 0,transparent 60%),linear-gradient(180deg,rgba(5,7,9,.35),rgba(5,7,9,.85))}
+</style>
+</head>
+<body>
+<div class="bg-cf"></div>
+<!-- HEADER -->
+<header class="header">
+<img src="tecnofly_logo.gif" alt="TecnoFly">
+<h1 class="page-title">Foil Assist System</h1>
+<h1 class="page-title">Board code: <b id="rx_number"></b></h1>
+</header>
+<!--     INFO SESSIONI -->
+<section class="card">
+<h3>Ride list – from latest to oldest</h3>
+<!--        <p>Latest ride stored: session <b id="lastRideNum">–</b> of 10</p>-->
+<p>Every battery used is a ride. The system stores last 10 rides. </p>
+</section>
+<!-- RIDES GRID (generata dinamicamente dai dati rimappati) -->
+<section class="ride-container" aria-label="Rides summary">
+<!-- Ride 1 -->
+<article class="ride-card">
+<h5>Ride Time: <b id="rideTime1">--:--</b></h5>
+<h5>Motoring Time: <b id="motorTime1">--:--</b></h5>
+<h5>Max Power: <b id="maxPower1"></b> W</h5>
+<h5>Min Voltage: <b id="minVoltage1"></b> V</h5>
+<h5>Max Current: <b id="maxCurrent1"></b> A</h5>
+<h5>Max Temp: <b id="maxTemp1"></b> °C</h5>
+<h5>Power Avg: <b id="powerAverage1"></b> W</h5>
+<h5>Power Batt: <b id="watthour1"></b> Wh</h5>
+<h5>Rider Vote: <b id="powerIndex1"></b> (0–10)</h5>
+<h5>Rider Score: <b id="score1"></b> points</h5>
+<button id="btnView1" class="button">View Ride 1</button>
+</article>
+<!-- Ride 2 -->
+<article class="ride-card">
+<h5>Ride Time: <b id="rideTime2">--:--</b></h5>
+<h5>Motoring Time: <b id="motorTime2">--:--</b></h5>
+<h5>Max Power: <b id="maxPower2"></b> W</h5>
+<h5>Min Voltage: <b id="minVoltage2"></b> V</h5>
+<h5>Max Current: <b id="maxCurrent2"></b> A</h5>
+<h5>Max Temp: <b id="maxTemp2"></b> °C</h5>
+<h5>Power Avg: <b id="powerAverage2"></b> W</h5>
+<h5>Power Batt: <b id="watthour2"></b> Wh</h5>
+<h5>Rider Vote: <b id="powerIndex2"></b> (0–10)</h5>
+<h5>Rider Score: <b id="score2"></b> points</h5>
+<button id="btnView2" class="button">View Ride 2</button>
+</article>
+<!-- Ride 3 -->
+<article class="ride-card">
+<h5>Ride Time: <b id="rideTime3">--:--</b></h5>
+<h5>Motoring Time: <b id="motorTime3">--:--</b></h5>
+<h5>Max Power: <b id="maxPower3"></b> W</h5>
+<h5>Min Voltage: <b id="minVoltage3"></b> V</h5>
+<h5>Max Current: <b id="maxCurrent3"></b> A</h5>
+<h5>Max Temp: <b id="maxTemp3"></b> °C</h5>
+<h5>Power Avg: <b id="powerAverage3"></b> W</h5>
+<h5>Power Batt: <b id="watthour3"></b> Wh</h5>
+<h5>Rider Vote: <b id="powerIndex3"></b> (0–10)</h5>
+<h5>Rider Score: <b id="score3"></b> points</h5>
+<button id="btnView3" class="button">View Ride 3</button>
+</article>
+<!-- Ride 4 -->
+<article class="ride-card">
+<h5>Ride Time: <b id="rideTime4">--:--</b></h5>
+<h5>Motoring Time: <b id="motorTime4">--:--</b></h5>
+<h5>Max Power: <b id="maxPower4"></b> W</h5>
+<h5>Min Voltage: <b id="minVoltage4"></b> V</h5>
+<h5>Max Current: <b id="maxCurrent4"></b> A</h5>
+<h5>Max Temp: <b id="maxTemp4"></b> °C</h5>
+<h5>Power Avg: <b id="powerAverage4"></b> W</h5>
+<h5>Power Batt: <b id="watthour4"></b> Wh</h5>
+<h5>Rider Vote: <b id="powerIndex4"></b> (0–10)</h5>
+<h5>Rider Score: <b id="score4"></b> points</h5>
+<button id="btnView4" class="button">View Ride 4</button>
+</article>
+<!-- Ride 5 -->
+<article class="ride-card">
+<h5>Ride Time: <b id="rideTime5">--:--</b></h5>
+<h5>Motoring Time: <b id="motorTime5">--:--</b></h5>
+<h5>Max Power: <b id="maxPower5"></b> W</h5>
+<h5>Min Voltage: <b id="minVoltage5"></b> V</h5>
+<h5>Max Current: <b id="maxCurrent5"></b> A</h5>
+<h5>Max Temp: <b id="maxTemp5"></b> °C</h5>
+<h5>Power Avg: <b id="powerAverage5"></b> W</h5>
+<h5>Power Batt: <b id="watthour5"></b> Wh</h5>
+<h5>Rider Vote: <b id="powerIndex5"></b> (0–10)</h5>
+<h5>Rider Score: <b id="score5"></b> points</h5>
+<button id="btnView5" class="button">View Ride 5</button>
+</article>
+<!-- Ride 6 -->
+<article class="ride-card">
+<h5>Ride Time: <b id="rideTime6">--:--</b></h5>
+<h5>Motoring Time: <b id="motorTime6">--:--</b></h5>
+<h5>Max Power: <b id="maxPower6"></b> W</h5>
+<h5>Min Voltage: <b id="minVoltage6"></b> V</h5>
+<h5>Max Current: <b id="maxCurrent6"></b> A</h5>
+<h5>Max Temp: <b id="maxTemp6"></b> °C</h5>
+<h5>Power Avg: <b id="powerAverage6"></b> W</h5>
+<h5>Power Batt: <b id="watthour6"></b> Wh</h5>
+<h5>Rider Vote: <b id="powerIndex6"></b> (0–10)</h5>
+<h5>Rider Score: <b id="score6"></b> points</h5>
+<button id="btnView6" class="button">View Ride 6</button>
+</article>
+<!-- Ride 7 -->
+<article class="ride-card">
+<h5>Ride Time: <b id="rideTime7">--:--</b></h5>
+<h5>Motoring Time: <b id="motorTime7">--:--</b></h5>
+<h5>Max Power: <b id="maxPower7"></b> W</h5>
+<h5>Min Voltage: <b id="minVoltage7"></b> V</h5>
+<h5>Max Current: <b id="maxCurrent7"></b> A</h5>
+<h5>Max Temp: <b id="maxTemp7"></b> °C</h5>
+<h5>Power Avg: <b id="powerAverage7"></b> W</h5>
+<h5>Power Batt: <b id="watthour7"></b> Wh</h5>
+<h5>Rider Vote: <b id="powerIndex7"></b> (0–10)</h5>
+<h5>Rider Score: <b id="score7"></b> points</h5>
+<button id="btnView7" class="button">View Ride 7</button>
+</article>
+<!-- Ride 8 -->
+<article class="ride-card">
+<h5>Ride Time: <b id="rideTime8">--:--</b></h5>
+<h5>Motoring Time: <b id="motorTime8">--:--</b></h5>
+<h5>Max Power: <b id="maxPower8"></b> W</h5>
+<h5>Min Voltage: <b id="minVoltage8"></b> V</h5>
+<h5>Max Current: <b id="maxCurrent8"></b> A</h5>
+<h5>Max Temp: <b id="maxTemp8"></b> °C</h5>
+<h5>Power Avg: <b id="powerAverage8"></b> W</h5>
+<h5>Power Batt: <b id="watthour8"></b> Wh</h5>
+<h5>Rider Vote: <b id="powerIndex8"></b> (0–10)</h5>
+<h5>Rider Score: <b id="score8"></b> points</h5>
+<button id="btnView8" class="button">View Ride 8</button>
+</article>
+<!-- Ride 9 -->
+<article class="ride-card">
+<h5>Ride Time: <b id="rideTime9">--:--</b></h5>
+<h5>Motoring Time: <b id="motorTime9">--:--</b></h5>
+<h5>Max Power: <b id="maxPower9"></b> W</h5>
+<h5>Min Voltage: <b id="minVoltage9"></b> V</h5>
+<h5>Max Current: <b id="maxCurrent9"></b> A</h5>
+<h5>Max Temp: <b id="maxTemp9"></b> °C</h5>
+<h5>Power Avg: <b id="powerAverage9"></b> W</h5>
+<h5>Power Batt: <b id="watthour9"></b> Wh</h5>
+<h5>Rider Vote: <b id="powerIndex9"></b> (0–10)</h5>
+<h5>Rider Score: <b id="score9"></b> points</h5>
+<button id="btnView9" class="button">View Ride 9</button>
+</article>
+<!-- Ride 10 -->
+<article class="ride-card">
+<h5>Ride Time: <b id="rideTime10">--:--</b></h5>
+<h5>Motoring Time: <b id="motorTime10">--:--</b></h5>
+<h5>Max Power: <b id="maxPower10"></b> W</h5>
+<h5>Min Voltage: <b id="minVoltage10"></b> V</h5>
+<h5>Max Current: <b id="maxCurrent10"></b> A</h5>
+<h5>Max Temp: <b id="maxTemp10"></b> °C</h5>
+<h5>Power Avg: <b id="powerAverage10"></b> W</h5>
+<h5>Power Batt: <b id="watthour10"></b> Wh</h5>
+<h5>Rider Vote: <b id="powerIndex10"></b> (0–10)</h5>
+<h5>Rider Score: <b id="score10"></b> points</h5>
+<button id="btnView10" class="button">View Ride 10</button>
+</article>
+<article class="ride-card">
+<h2>Tools Menu</h2>
+<p>
+<button class="button" onclick="window.location.href='setup.html'">Settings</button>
+<br><br>
+<button class="button" onclick="window.location.href='test.html'">Sensors Data Monitor</button>
+</p>
+</article>
+</section>
+<!-- ANALYSIS -->
+<section class="card">
+<h2>Rides analysis</h2>
+<p class="subtitle">Analysis of all stored rides – best foil session highlighted in green.</p>
+<table id="reportTable">
+<thead>
+<tr>
+<th>Ride</th>
+<th>Type</th>
+<th>Count / Time</th>
+<th>Detail</th>
+</tr>
+</thead>
+<tbody id="reportBody">
+<tr><td colspan="4">Loading analysis…</td></tr>
+</tbody>
+</table>
+</section>
+<!-- RECORD ASSOLUTO -->
+<section class="card">
+<h2>🏆 All‑time Best Wave / Pump & Glide</h2>
+<p class="subtitle">Longest continuous foil session ever recorded by this unit.</p>
+<div style="display:flex; align-items:center; justify-content:center; gap:1rem; padding:0.5rem 0;">
+<span style="font-size:3.5rem; font-weight:700; letter-spacing:2px; color:#22c55e;" id="absRecord">--:--</span>
+<span style="font-size:1rem; color:#94a3b8;">minutes:seconds</span>
+</div>
+</section>
+<!-- MENU -->
+<section class="card">
+<h3>System pages</h3>
+<p>
+<button class="button" onclick="window.location.href='setup.html'">Settings</button>
+<br><br>
+<button class="button" onclick="window.location.href='test.html'">Sensors Data Monitor</button>
+</p>
+</section>
+<!-- FOOTER -->
+<footer>
+<p>Written by Roberto Assiro – Firmware Ver. <b id="version"></b></p>
+<p>– TecnoFly 2026 –</p>
+<p>www.foilassistproject.com</p>
+</footer>
+</body>
+</html>

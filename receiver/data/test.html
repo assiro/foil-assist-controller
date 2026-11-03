@@ -209,6 +209,9 @@
 	  <div class="card-metric">
 	    <div class="label">Link Radio Channel Number:</div>
 	    <div class="value" id="channel">--</div>
+		<br>
+		<div class="label">VESC fault code:</div>
+	    <div class="value" id="vescError">--</div>
 	  </div>
 </div>
 
@@ -296,18 +299,18 @@
           <option value="80">+800mV</option><option value="85">+850mV</option>
           <option value="90">+900mV</option><option value="95">+950mV</option>
           <option value="100">+1V</option>
-          <option value="110">-100mV</option><option value="115">-150mV</option>
-          <option value="120">-200mV</option><option value="125">-250mV</option>
-          <option value="130">-300mV</option><option value="135">-350mV</option>
-          <option value="140">-400mV</option><option value="145">-450mV</option>
-          <option value="150">-500mV</option><option value="155">-550mV</option>
-          <option value="160">-600mV</option><option value="165">-650mV</option>
-          <option value="170">-700mV</option><option value="175">-750mV</option>
-          <option value="180">-800mV</option><option value="185">-850mV</option>
-          <option value="190">-900mV</option><option value="195">-950mV</option>
-          <option value="1100">-1V</option>
+          <option value="2010">-100mV</option><option value="2015">-150mV</option>
+          <option value="2020">-200mV</option><option value="2025">-250mV</option>
+          <option value="2030">-300mV</option><option value="2035">-350mV</option>
+          <option value="2040">-400mV</option><option value="20145">-450mV</option>
+          <option value="2050">-500mV</option><option value="2055">-550mV</option>
+          <option value="2060">-600mV</option><option value="2065">-650mV</option>
+          <option value="2070">-700mV</option><option value="2075">-750mV</option>
+          <option value="2080">-800mV</option><option value="2085">-850mV</option>
+          <option value="2090">-900mV</option><option value="2095">-950mV</option>
+          <option value="2100">-1V</option>
         </select>
-        <span style="font-family:var(--mono); font-size:13px; color:#9ca3af;">Current: <b id="offsetValue">--</b></span>
+        <span style="font-family:var(--mono); font-size:13px; color:#9ca3af;">Actual value: <b id="offsetValue"> Volt</b></span>
       </div>
     </div>
 
@@ -320,9 +323,9 @@
 
   <!-- BACK HOME -->
   <section class="card">
-    <button class="button" onclick="window.location.href='/index.html'">Back home</button>
+    <button class="button" onclick="window.location.href='/index.html'">Back Menu</button>
 	<br><br>
-	<button class="button" onclick="window.location.href='/expert.html'">Expert</button>	
+	<button class="button" onclick="window.location.href='/expert.html'">Expert Page</button>	
   </section>
 
   <footer>
@@ -416,7 +419,8 @@ async function fetchData() {
     updateSignalBars(d.rssi);
 
 	document.getElementById('channel').textContent = d.channel;
-
+	document.getElementById('vescError').textContent = d.vesc;
+	
     const pill = document.getElementById('lossPill');
     pill.textContent = 'LOSS ' + d.lossPercent.toFixed(1) + '%';
     pill.className = 'loss-pill ' + (d.lossPercent < 5 ? 'ok' : '');

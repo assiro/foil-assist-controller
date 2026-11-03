@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IMU Raw Data – TecnoFly</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@400;700;900&display=swap');
+:root{
+  --bg:#080b0f;--panel:#0d1117;--border:#1a2230;
+  --ax:#00e5ff;--ay:#ff6b35;--az:#7fff6b;
+  --dim:#3a4a5a;--text:#b8ccd8;--head:#e0eaf0;
+  --mono:'Share Tech Mono',monospace;--sans:'Barlow Condensed',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--mono);min-height:100vh}
+
+header{
+  display:flex;align-items:center;gap:20px;padding:14px 24px;
+  background:#050709;border-bottom:1px solid var(--border);
+  position:sticky;top:0;z-index:100;
+}
+.logo{font-family:var(--sans);font-weight:900;font-size:20px;letter-spacing:5px;color:var(--ax);text-transform:uppercase}
+.logo em{color:var(--ay);font-style:normal}
+.hstats{display:flex;gap:24px;flex-wrap:wrap;flex:1;font-family:var(--sans);font-size:13px}
+.hs{display:flex;flex-direction:column;gap:1px}
+.hs-l{color:var(--dim);font-size:10px;letter-spacing:2px;text-transform:uppercase}
+.hs-v{color:var(--head);font-size:15px;font-family:var(--mono)}
+.hs-v.ax{color:var(--ax)} .hs-v.ay{color:var(--ay)} .hs-v.az{color:var(--az)}
+
+/* drop zone */
+#dropzone{
+  border:2px dashed var(--border);border-radius:8px;
+  margin:28px 24px 0;padding:40px 20px;text-align:center;
+  font-family:var(--sans);font-size:18px;letter-spacing:2px;color:var(--dim);
+  cursor:pointer;transition:border-color .2s,color .2s;
+}
+#dropzone:hover,#dropzone.over{border-color:var(--ax);color:var(--ax)}
+#dropzone input{display:none}
+#dropzone .hint{font-size:12px;margin-top:8px;letter-spacing:1px}
+
+/* canvas area */
+#canvasWrap{margin:20px 24px 0;position:relative;overflow:hidden}
+canvas{display:block;width:100%;cursor:crosshair;border:1px solid var(--border);border-radius:4px;background:var(--panel)}
+#cursor-line{position:absolute;top:0;width:1px;background:rgba(255,255,255,.25);pointer-events:none;display:none}
+#tooltip{
+  position:absolute;background:#0a1018ee;border:1px solid var(--border);
+  padding:8px 12px;border-radius:4px;font-size:12px;pointer-events:none;
+  display:none;white-space:nowrap;line-height:1.7;
+}
+
+/* controls */
+.controls{display:flex;align-items:center;gap:12px;margin:14px 24px 0;flex-wrap:wrap}
+.ctrl-label{font-family:var(--sans);font-size:11px;letter-spacing:2px;color:var(--dim);text-transform:uppercase}
+.cbwrap{display:flex;align-items:center;gap:6px;font-family:var(--sans);font-size:13px;cursor:pointer}
+.cbwrap input{accent-color:var(--ax);width:14px;height:14px}
+.cbwrap.ay input{accent-color:var(--ay)} .cbwrap.az input{accent-color:var(--az)}
+.cbwrap.ax{color:var(--ax)} .cbwrap.ay{color:var(--ay)} .cbwrap.az{color:var(--az)}
+.cbwrap.mag{color:#cc88ff} .cbwrap.mag input{accent-color:#cc88ff}
+button{
+  background:transparent;border:1px solid var(--ax);color:var(--ax);
+  font-family:var(--sans);font-weight:700;font-size:12px;letter-spacing:2px;
+  padding:6px 16px;border-radius:3px;cursor:pointer;text-transform:uppercase;transition:background .15s,color .15s
+}
+button:hover{background:var(--ax);color:var(--bg)}
+.btn-reset{border-color:var(--dim);color:var(--dim)}
+.btn-reset:hover{background:var(--dim);color:var(--bg)}
+
+/* stats row */
+#statsRow{display:none;flex-wrap:wrap;gap:16px;margin:14px 24px 0;
+  padding:12px 16px;background:var(--panel);border:1px solid var(--border);border-radius:6px}
+.sr{display:flex;flex-direction:column;gap:2px;min-width:90px}
+.sr-l{font-family:var(--sans);font-size:10px;letter-spacing:2px;color:var(--dim);text-transform:uppercase}
+.sr-v{font-family:var(--mono);font-size:14px}
+.sr-v.ax{color:var(--ax)} .sr-v.ay{color:var(--ay)} .sr-v.az{color:var(--az)} .sr-v.mag{color:#cc88ff}
+
+/* table */
+#tableWrap{
+  margin:16px 24px 40px;overflow-x:auto;max-height:400px;overflow-y:auto;
+  border:1px solid var(--border);border-radius:6px;display:none
+}
+table{width:100%;border-collapse:collapse;font-size:12px;min-width:600px}
+thead tr{background:#050709;position:sticky;top:0;z-index:10;border-bottom:2px solid var(--ax)}
+th{
+  font-family:var(--sans);font-size:10px;letter-spacing:2px;text-transform:uppercase;
+  color:var(--dim);padding:8px 10px;text-align:right;border-right:1px solid var(--border);
+  cursor:pointer;user-select:none;white-space:nowrap
+}
+th:hover{color:var(--ax)} th:first-child{text-align:center}
+tbody tr{border-bottom:1px solid #111820;transition:background .1s}
+tbody tr:hover{background:#111c28}
+td{padding:5px 10px;text-align:right;border-right:1px solid #111820;font-size:12px}
+td:first-child{text-align:center;color:var(--dim);font-size:11px}
+.ax-c{color:var(--ax)} .ay-c{color:var(--ay)} .az-c{color:var(--az)} .mag-c{color:#cc88ff}
+
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">IMU <em>RAW</em></div>
+  <div class="hstats" id="hstats">
+    <div class="hs"><div class="hs-l">Samples</div><div class="hs-v" id="h-n">—</div></div>
+    <div class="hs"><div class="hs-l">Duration</div><div class="hs-v" id="h-dur">—</div></div>
+    <div class="hs"><div class="hs-l">Rate</div><div class="hs-v" id="h-rate">—</div></div>
+    <div class="hs"><div class="hs-l">ax RMS</div><div class="hs-v ax" id="h-axrms">—</div></div>
+    <div class="hs"><div class="hs-l">ay RMS</div><div class="hs-v ay" id="h-ayrms">—</div></div>
+    <div class="hs"><div class="hs-l">az RMS</div><div class="hs-v az" id="h-azrms">—</div></div>
+  </div>
+</header>
+
+<div id="dropzone" onclick="document.getElementById('filePick').click()">
+  <input type="file" id="filePick" accept=".bin">
+  <div>TRASCINA imu.bin OPPURE CLICCA PER SELEZIONARE</div>
+  <div class="hint">Formato: header 12 byte (FOIL magic) + campioni int16×3 @ N Hz</div>
+</div>
+
+<div class="controls" id="ctrl" style="display:none">
+  <span class="ctrl-label">Assi:</span>
+  <label class="cbwrap ax"><input type="checkbox" id="chkAx" checked> AX</label>
+  <label class="cbwrap ay"><input type="checkbox" id="chkAy" checked> AY</label>
+  <label class="cbwrap az"><input type="checkbox" id="chkAz" checked> AZ</label>
+  <label class="cbwrap mag"><input type="checkbox" id="chkMag"> |MAG|</label>
+  <span style="margin-left:8px" class="ctrl-label">Zoom:</span>
+  <button id="btnZoomIn">+</button>
+  <button id="btnZoomOut">−</button>
+  <button class="btn-reset" id="btnReset">RESET</button>
+  <span style="margin-left:8px" class="ctrl-label">Tabella:</span>
+  <button id="btnTable">MOSTRA</button>
+</div>
+
+<div id="canvasWrap" style="display:none">
+  <canvas id="waveCanvas" height="300"></canvas>
+  <div id="cursor-line"></div>
+  <div id="tooltip"></div>
+</div>
+
+<div id="statsRow"></div>
+<div id="tableWrap"><table id="dataTable"><thead><tr>
+  <th>#</th><th>t (ms)</th>
+  <th style="color:var(--ax)">AX (mg)</th><th style="color:var(--ax)">AX (g)</th>
+  <th style="color:var(--ay)">AY (mg)</th><th style="color:var(--ay)">AY (g)</th>
+  <th style="color:var(--az)">AZ (mg)</th><th style="color:var(--az)">AZ (g)</th>
+  <th style="color:#cc88ff">|MAG| (g)</th>
+</tr></thead><tbody id="tbody"></tbody></table></div>
+
+<script>
+const HEADER = 12, SAMPLE = 6;
+let samples = [], rate = 50;
+let viewStart = 0, viewLen = 0;
+let dragging = false, dragX0 = 0, dragViewStart0 = 0;
+let tableVisible = false;
+
+const canvas  = document.getElementById('waveCanvas');
+const ctx     = canvas.getContext('2d');
+const wrap    = document.getElementById('canvasWrap');
+const cline   = document.getElementById('cursor-line');
+const tooltip = document.getElementById('tooltip');
+
+// ── File parsing ────────────────────────────────────────────
+function parseBin(buf) {
+    if (buf.byteLength < HEADER) throw new Error('File troppo piccolo');
+    const view = new DataView(buf);
+    const magic = view.getUint32(0, true);
+    // accetta sia 'FOIL' (0x4C494F46) che il reverse
+    rate = view.getUint16(6, true) || 50;
+    if (rate < 1 || rate > 1000) rate = 50;
+    const n = Math.floor((buf.byteLength - HEADER) / SAMPLE);
+    const out = [];
+    for (let i = 0; i < n; i++) {
+        const off = HEADER + i * SAMPLE;
+        const ax = view.getInt16(off,   true);
+        const ay = view.getInt16(off+2, true);
+        const az = view.getInt16(off+4, true);
+        const mag = Math.sqrt(ax*ax + ay*ay + az*az);
+        out.push({ ax, ay, az, mag, t: Math.round(i * 1000 / rate) });
+    }
+    return out;
+}
+
+function loadFile(file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+        try {
+            samples = parseBin(e.target.result);
+            viewStart = 0; viewLen = samples.length;
+            updateHeaderStats();
+            updateStats();
+            drawCanvas();
+            document.getElementById('dropzone').style.display = 'none';
+            document.getElementById('ctrl').style.display = 'flex';
+            wrap.style.display = 'block';
+            document.getElementById('statsRow').style.display = 'flex';
+        } catch(err) {
+            alert('Errore parsing: ' + err.message);
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+// drag & drop
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('over'); loadFile(e.dataTransfer.files[0]); });
+document.getElementById('filePick').addEventListener('change', e => { if(e.target.files[0]) loadFile(e.target.files[0]); });
+
+// ── Stats ────────────────────────────────────────────────────
+function rms(arr) { return Math.sqrt(arr.reduce((s,v) => s+v*v, 0) / arr.length); }
+
+function updateHeaderStats() {
+    document.getElementById('h-n').textContent    = samples.length;
+    document.getElementById('h-dur').textContent  = (samples.length / rate).toFixed(1) + 's';
+    document.getElementById('h-rate').textContent = rate + ' Hz';
+    document.getElementById('h-axrms').textContent = (rms(samples.map(s=>s.ax))/1000).toFixed(3) + 'g';
+    document.getElementById('h-ayrms').textContent = (rms(samples.map(s=>s.ay))/1000).toFixed(3) + 'g';
+    document.getElementById('h-azrms').textContent = (rms(samples.map(s=>s.az))/1000).toFixed(3) + 'g';
+}
+
+function updateStats() {
+    const sl = samples.slice(viewStart, viewStart + viewLen);
+    if (!sl.length) return;
+    const row = document.getElementById('statsRow');
+    const stat = (label, val, cls) =>
+        `<div class="sr"><div class="sr-l">${label}</div><div class="sr-v ${cls}">${val}</div></div>`;
+    const fmt = v => (v/1000).toFixed(3) + 'g';
+    const axes = ['ax','ay','az'];
+    const colors = ['ax','ay','az'];
+    let html = '';
+    for (let i = 0; i < 3; i++) {
+        const k = axes[i];
+        const vals = sl.map(s=>s[k]);
+        const mn = Math.min(...vals), mx = Math.max(...vals);
+        const r = rms(vals);
+        html += stat(`${k.toUpperCase()} min`, fmt(mn), colors[i]);
+        html += stat(`${k.toUpperCase()} max`, fmt(mx), colors[i]);
+        html += stat(`${k.toUpperCase()} rms`, fmt(r),  colors[i]);
+    }
+    const mags = sl.map(s=>s.mag);
+    html += stat('|MAG| max', fmt(Math.max(...mags)), 'mag');
+    html += stat('|MAG| avg', fmt(mags.reduce((a,b)=>a+b,0)/mags.length), 'mag');
+    html += stat('Campioni', sl.length, '');
+    html += stat('Durata', (sl.length/rate).toFixed(2)+'s', '');
+    row.innerHTML = html;
+}
+
+// ── Canvas draw ──────────────────────────────────────────────
+function drawCanvas() {
+    const W = canvas.offsetWidth;
+    const H = 300;
+    canvas.width  = W * window.devicePixelRatio;
+    canvas.height = H * window.devicePixelRatio;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+    ctx.clearRect(0, 0, W, H);
+
+    const sl = samples.slice(viewStart, viewStart + viewLen);
+    if (!sl.length) return;
+
+    const showAx  = document.getElementById('chkAx').checked;
+    const showAy  = document.getElementById('chkAy').checked;
+    const showAz  = document.getElementById('chkAz').checked;
+    const showMag = document.getElementById('chkMag').checked;
+
+    // find global y range among visible + selected axes
+    let ymin = Infinity, ymax = -Infinity;
+    for (const s of sl) {
+        if (showAx)  { ymin=Math.min(ymin,s.ax);  ymax=Math.max(ymax,s.ax);  }
+        if (showAy)  { ymin=Math.min(ymin,s.ay);  ymax=Math.max(ymax,s.ay);  }
+        if (showAz)  { ymin=Math.min(ymin,s.az);  ymax=Math.max(ymax,s.az);  }
+        if (showMag) { ymin=Math.min(ymin,s.mag); ymax=Math.max(ymax,s.mag); }
+    }
+    if (ymin === ymax) ymax = ymin + 1;
+    const pad = (ymax - ymin) * 0.08;
+    ymin -= pad; ymax += pad;
+
+    const toY = v => H - ((v - ymin) / (ymax - ymin)) * H;
+    const toX = i => (i / (sl.length - 1)) * W;
+
+    // grid
+    ctx.strokeStyle = '#12202e';
+    ctx.lineWidth = 1;
+    for (let r = 0; r <= 4; r++) {
+        const y = r * H / 4;
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+    // zero line
+    const z0 = toY(0);
+    if (z0 > 0 && z0 < H) {
+        ctx.strokeStyle = '#1e3040';
+        ctx.setLineDash([4,4]);
+        ctx.beginPath(); ctx.moveTo(0, z0); ctx.lineTo(W, z0); ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    // y axis labels
+    ctx.fillStyle = '#2a3a4a';
+    ctx.font = '10px Share Tech Mono';
+    ctx.textAlign = 'left';
+    for (let r = 0; r <= 4; r++) {
+        const v = ymin + (ymax - ymin) * (1 - r/4);
+        const y = r * H / 4;
+        ctx.fillText((v/1000).toFixed(2)+'g', 4, y + 12);
+    }
+
+    // plot lines
+    const drawLine = (key, color) => {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = 0.9;
+        ctx.beginPath();
+        for (let i = 0; i < sl.length; i++) {
+            const x = toX(i), y = toY(sl[i][key]);
+            i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+        }
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+    };
+
+    if (showAz)  drawLine('az',  'var(--az)' .replace ? '#7fff6b' : '#7fff6b');
+    if (showAy)  drawLine('ay',  '#ff6b35');
+    if (showAx)  drawLine('ax',  '#00e5ff');
+    if (showMag) drawLine('mag', '#cc88ff');
+
+    // time labels bottom
+    ctx.fillStyle = '#2a3a4a';
+    ctx.font = '10px Share Tech Mono';
+    ctx.textAlign = 'center';
+    const nLabels = Math.min(10, Math.floor(W / 80));
+    for (let i = 0; i <= nLabels; i++) {
+        const idx = Math.round((sl.length - 1) * i / nLabels);
+        const x   = toX(idx);
+        const tMs = (viewStart + idx) / rate;
+        ctx.fillText(tMs.toFixed(1)+'s', x, H - 4);
+    }
+}
+
+// ── Tooltip on mousemove ─────────────────────────────────────
+wrap.addEventListener('mousemove', e => {
+    if (!samples.length) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const W = rect.width;
+    const idx = Math.round((x / W) * (viewLen - 1));
+    const si  = viewStart + idx;
+    if (si < 0 || si >= samples.length) return;
+    const s = samples[si];
+
+    cline.style.left    = x + 'px';
+    cline.style.height  = rect.height + 'px';
+    cline.style.display = 'block';
+
+    const tSec = (si / rate).toFixed(2);
+    tooltip.innerHTML = `
+      <span style="color:#6a8a9a">#${si} · t=${tSec}s</span><br>
+      <span style="color:#00e5ff">AX ${(s.ax/1000).toFixed(3)}g</span><br>
+      <span style="color:#ff6b35">AY ${(s.ay/1000).toFixed(3)}g</span><br>
+      <span style="color:#7fff6b">AZ ${(s.az/1000).toFixed(3)}g</span><br>
+      <span style="color:#cc88ff">|M| ${(s.mag/1000).toFixed(3)}g</span>`;
+    tooltip.style.display = 'block';
+    tooltip.style.left = (x + 16) + 'px';
+    tooltip.style.top  = '10px';
+    if (x + 160 > W) tooltip.style.left = (x - 130) + 'px';
+});
+wrap.addEventListener('mouseleave', () => {
+    cline.style.display = 'none';
+    tooltip.style.display = 'none';
+});
+
+// ── Pan ──────────────────────────────────────────────────────
+canvas.addEventListener('mousedown', e => {
+    dragging = true; dragX0 = e.clientX;
+    dragViewStart0 = viewStart;
+    canvas.style.cursor = 'grabbing';
+});
+window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const W = canvas.offsetWidth;
+    const dx = e.clientX - dragX0;
+    const shift = -Math.round((dx / W) * viewLen);
+    let ns = dragViewStart0 + shift;
+    ns = Math.max(0, Math.min(samples.length - viewLen, ns));
+    viewStart = ns;
+    drawCanvas(); updateStats();
+});
+window.addEventListener('mouseup', () => { dragging = false; canvas.style.cursor = 'crosshair'; });
+
+// ── Zoom ─────────────────────────────────────────────────────
+canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const factor = e.deltaY > 0 ? 1.3 : 0.77;
+    const W = canvas.offsetWidth;
+    const cx = e.clientX - canvas.getBoundingClientRect().left;
+    const pct = cx / W;
+    const center = viewStart + Math.round(pct * viewLen);
+    viewLen = Math.round(viewLen * factor);
+    viewLen = Math.max(50, Math.min(samples.length, viewLen));
+    viewStart = Math.round(center - pct * viewLen);
+    viewStart = Math.max(0, Math.min(samples.length - viewLen, viewStart));
+    drawCanvas(); updateStats();
+}, { passive: false });
+
+document.getElementById('btnZoomIn').addEventListener('click',  () => { zoom(0.5);  });
+document.getElementById('btnZoomOut').addEventListener('click', () => { zoom(2.0);  });
+document.getElementById('btnReset').addEventListener('click',   () => {
+    viewStart = 0; viewLen = samples.length; drawCanvas(); updateStats();
+});
+
+function zoom(factor) {
+    const center = viewStart + viewLen / 2;
+    viewLen = Math.round(viewLen * factor);
+    viewLen = Math.max(50, Math.min(samples.length, viewLen));
+    viewStart = Math.round(center - viewLen / 2);
+    viewStart = Math.max(0, Math.min(samples.length - viewLen, viewStart));
+    drawCanvas(); updateStats();
+}
+
+['chkAx','chkAy','chkAz','chkMag'].forEach(id =>
+    document.getElementById(id).addEventListener('change', drawCanvas));
+
+window.addEventListener('resize', () => { if(samples.length) drawCanvas(); });
+
+// ── Table ────────────────────────────────────────────────────
+document.getElementById('btnTable').addEventListener('click', () => {
+    tableVisible = !tableVisible;
+    const tw = document.getElementById('tableWrap');
+    tw.style.display = tableVisible ? 'block' : 'none';
+    document.getElementById('btnTable').textContent = tableVisible ? 'NASCONDI' : 'MOSTRA';
+    if (tableVisible && !document.getElementById('tbody').children.length) buildTable();
+});
+
+function buildTable() {
+    const tb = document.getElementById('tbody');
+    tb.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    const sl = samples.slice(viewStart, viewStart + viewLen);
+    sl.forEach((s, i) => {
+        const tr = document.createElement('tr');
+        const fmt = v => (v/1000).toFixed(3);
+        tr.innerHTML = `
+          <td>${viewStart+i+1}</td>
+          <td>${s.t}</td>
+          <td class="ax-c">${s.ax}</td><td class="ax-c">${fmt(s.ax)}</td>
+          <td class="ay-c">${s.ay}</td><td class="ay-c">${fmt(s.ay)}</td>
+          <td class="az-c">${s.az}</td><td class="az-c">${fmt(s.az)}</td>
+          <td class="mag-c">${fmt(s.mag)}</td>`;
+        frag.appendChild(tr);
+    });
+    tb.appendChild(frag);
+}
+
+// build table on pan if visible
+const origDraw = drawCanvas;
+</script>
+</body>
+</html>

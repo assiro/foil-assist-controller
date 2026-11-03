@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FOIL DATA VIEWER</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;600;800&display=swap');
+
+  :root {
+    --bg:        #0a0c10;
+    --panel:     #0f1318;
+    --border:    #1e2530;
+    --accent:    #00e5ff;
+    --accent2:   #ff6b35;
+    --accent3:   #7fff6b;
+    --text:      #c8d8e8;
+    --dim:       #4a5a6a;
+    --header-bg: #060810;
+    --row-even:  #0d1016;
+    --row-hover: #131c28;
+    --mono:      'Share Tech Mono', monospace;
+    --sans:      'Barlow Condensed', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── HEADER ── */
+  header {
+    background: var(--header-bg);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 28px;
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(6px);
+  }
+
+  .logo {
+    font-family: var(--sans);
+    font-weight: 800;
+    font-size: 22px;
+    letter-spacing: 4px;
+    color: var(--accent);
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .logo span { color: var(--accent2); }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    flex: 1;
+  }
+
+  label {
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 2px;
+    color: var(--dim);
+    text-transform: uppercase;
+  }
+
+  select {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 14px;
+    padding: 7px 14px;
+    border-radius: 4px;
+    outline: none;
+    cursor: pointer;
+    transition: border-color .2s;
+  }
+  select:hover, select:focus { border-color: var(--accent); }
+
+  button {
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 2px;
+    padding: 8px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: background .2s, color .2s;
+  }
+  button:hover { background: var(--accent); color: var(--bg); }
+  button:disabled { opacity: .3; cursor: default; }
+  button:disabled:hover { background: transparent; color: var(--accent); }
+
+  .btn-dl {
+    border-color: var(--accent3);
+    color: var(--accent3);
+    margin-left: auto;
+  }
+  .btn-dl:hover { background: var(--accent3); color: var(--bg); }
+
+  /* ── STATS BAR ── */
+  #stats-bar {
+    display: none;
+    padding: 10px 28px;
+    background: #0b0e14;
+    border-bottom: 1px solid var(--border);
+    gap: 32px;
+    flex-wrap: wrap;
+    font-family: var(--sans);
+    font-size: 13px;
+    letter-spacing: 1px;
+  }
+  #stats-bar.visible { display: flex; }
+  .stat { display: flex; flex-direction: column; gap: 2px; }
+  .stat-label { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: 2px; }
+  .stat-value { color: var(--text); font-family: var(--mono); font-size: 15px; }
+  .stat-value.hi { color: var(--accent); }
+
+  /* ── STATUS / ERROR ── */
+  #status {
+    padding: 18px 28px;
+    font-family: var(--sans);
+    font-size: 14px;
+    letter-spacing: 1px;
+    color: var(--dim);
+  }
+  #status.err { color: var(--accent2); }
+
+  /* ── LOADING BAR ── */
+  #loadbar {
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    width: 0;
+    transition: width .3s;
+    display: none;
+  }
+
+  /* ── TABLE WRAPPER ── */
+  #table-wrap {
+    overflow-x: auto;
+    padding: 0 0 40px 0;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    min-width: 1100px;
+  }
+
+  thead tr {
+    background: var(--header-bg);
+    border-bottom: 2px solid var(--accent);
+    position: sticky;
+    top: 65px;
+    z-index: 50;
+  }
+
+  th {
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--dim);
+    padding: 10px 10px;
+    text-align: right;
+    white-space: nowrap;
+    border-right: 1px solid var(--border);
+    user-select: none;
+    cursor: pointer;
+  }
+  th:hover { color: var(--accent); }
+  th:first-child { text-align: center; color: var(--accent); border-left: none; }
+  th.sort-asc::after  { content: ' ▲'; color: var(--accent); }
+  th.sort-desc::after { content: ' ▼'; color: var(--accent); }
+
+  /* group headers */
+  .th-group {
+    background: #080a0e;
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: #2a3a4a;
+    cursor: default;
+    padding: 4px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .th-group:hover { color: #2a3a4a; }
+
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background .1s;
+  }
+  tbody tr:nth-child(even) { background: var(--row-even); }
+  tbody tr:hover { background: var(--row-hover); }
+
+  td {
+    padding: 6px 10px;
+    text-align: right;
+    border-right: 1px solid #12181f;
+    white-space: nowrap;
+    font-size: 13px;
+  }
+  td:first-child {
+    text-align: center;
+    color: var(--dim);
+    font-size: 11px;
+    border-left: 3px solid transparent;
+  }
+
+  /* coloured cells */
+  .time-cell   { color: var(--accent);  font-size: 14px; letter-spacing: 1px; }
+  .volt-cell   { color: #ffe066; }
+  .curr-cell   { color: #ff9944; }
+  .pow-cell    { color: var(--accent2); font-weight: bold; }
+  .thr-cell    { color: #aaccff; }
+  .bat-cell    { color: var(--accent3); }
+  .temp-cell   { color: #ff6680; }
+  .imu-cell    { color: #b088ff; }
+  .rpm-cell    { color: #66ddcc; }
+
+  /* bar inside cell */
+  .bar-wrap { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+  .bar { height: 6px; border-radius: 3px; min-width: 2px; }
+  .bar-thr  { background: #4488cc; }
+  .bar-bat  { background: var(--accent3); }
+  .bar-pow  { background: var(--accent2); }
+
+  /* takeoff / wave highlight */
+  tr.takeoff-row td:first-child { border-left: 3px solid var(--accent2); }
+  tr.wave-row    td:first-child { border-left: 3px solid var(--accent3); }
+  tr.fall-row    td:first-child { border-left: 3px solid #ff4455; }
+
+  .tag {
+    display: inline-block;
+    font-family: var(--sans);
+    font-size: 9px;
+    letter-spacing: 1px;
+    padding: 1px 5px;
+    border-radius: 2px;
+    vertical-align: middle;
+    margin-left: 4px;
+    text-transform: uppercase;
+  }
+  .tag-to   { background: var(--accent2); color: #000; }
+  .tag-wave { background: var(--accent3); color: #000; }
+  .tag-fall { background: #ff4455;        color: #fff; }
+
+  /* empty state */
+  .empty-state {
+    text-align: center;
+    padding: 80px 20px;
+    color: var(--dim);
+    font-family: var(--sans);
+    font-size: 16px;
+    letter-spacing: 2px;
+  }
+  .empty-state .big { font-size: 48px; margin-bottom: 16px; opacity: .3; }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--dim); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">E<span>·</span>FOIL <span>DATA</span></div>
+  <div class="controls">
+    <label>File</label>
+    <select id="fileSelect">
+      <option value="">— seleziona ride —</option>
+      <option value="0">vescDat0.bin</option>
+      <option value="1">vescDat1.bin</option>
+      <option value="2">vescDat2.bin</option>
+      <option value="3">vescDat3.bin</option>
+      <option value="4">vescDat4.bin</option>
+      <option value="5">vescDat5.bin</option>
+      <option value="6">vescDat6.bin</option>
+      <option value="7">vescDat7.bin</option>
+      <option value="8">vescDat8.bin</option>
+      <option value="9">vescDat9.bin</option>
+    </select>
+    <button id="btnLoad">CARICA</button>
+    <button class="btn-dl" id="btnCsv" disabled>ESPORTA CSV</button>
+  </div>
+</header>
+
+<div id="loadbar"></div>
+
+<div id="stats-bar">
+  <div class="stat"><div class="stat-label">Campioni</div><div class="stat-value hi" id="s-samples">—</div></div>
+  <div class="stat"><div class="stat-label">Durata</div><div class="stat-value hi" id="s-dur">—</div></div>
+  <div class="stat"><div class="stat-label">V min</div><div class="stat-value" id="s-vmin">—</div></div>
+  <div class="stat"><div class="stat-label">V max</div><div class="stat-value" id="s-vmax">—</div></div>
+  <div class="stat"><div class="stat-label">Pmax</div><div class="stat-value" id="s-pmax">—</div></div>
+  <div class="stat"><div class="stat-label">Pmax</div><div class="stat-value" id="s-pmaxval">—</div></div>
+  <div class="stat"><div class="stat-label">Wh tot</div><div class="stat-value" id="s-wh">—</div></div>
+  <div class="stat"><div class="stat-label">Temp max</div><div class="stat-value" id="s-tmax">—</div></div>
+  <div class="stat"><div class="stat-label">File size</div><div class="stat-value" id="s-size">—</div></div>
+</div>
+
+<div id="status">Seleziona un file e premi CARICA.</div>
+
+<div id="table-wrap">
+  <div class="empty-state" id="empty">
+    <div class="big">〰</div>
+    Nessun dato caricato
+  </div>
+  <table id="dataTable" style="display:none">
+    <thead>
+      <tr id="group-row">
+        <th class="th-group" colspan="2">TEMPO</th>
+        <th class="th-group" colspan="3">ELETTRICO</th>
+        <th class="th-group" colspan="3">POTENZA</th>
+        <th class="th-group" colspan="2">BATTERIA</th>
+        <th class="th-group" colspan="1">TEMP</th>
+        <th class="th-group" colspan="1">RPM</th>
+        <th class="th-group" colspan="5">IMU</th>
+      </tr>
+      <tr id="col-row">
+        <th data-col="row">#</th>
+        <th data-col="time">Tempo</th>
+        <th data-col="voltage">Volt V</th>
+        <th data-col="current">Corr A</th>
+        <th data-col="power">Watt W</th>
+        <th data-col="throttle">Gas %</th>
+        <th data-col="powerAvg">P.Media</th>
+        <th data-col="watthour">Wh</th>
+        <th data-col="batt">Batt %</th>
+        <th data-col="tempMosfet">°C</th>
+        <th data-col="rpm">RPM</th>
+        <th data-col="rms">RMS g</th>
+        <th data-col="peak">Peak g</th>
+        <th data-col="tilt">Tilt °</th>
+        <th data-col="pitch">Pitch °</th>
+        <th data-col="roll">Roll °</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
+
+<script>
+// ── VescRecord layout  (must match C struct, 22 bytes packed) ──
+const RECORD_SIZE = 22;
+const STRUCT = [
+  { name: 'tMin',       type: 'Uint8'  },
+  { name: 'tSec',       type: 'Uint8'  },
+  { name: 'rpm',        type: 'Int16'  },
+  { name: 'voltage10',  type: 'Int16'  },
+  { name: 'current10',  type: 'Int16'  },
+  { name: 'power',      type: 'Uint16' },
+  { name: 'throttle',   type: 'Uint8'  },
+  { name: 'batt',       type: 'Uint8'  },
+  { name: 'watthour',   type: 'Uint16' },
+  { name: 'tempMosfet', type: 'Int8'   },
+  { name: 'powerAvg',   type: 'Uint16' },
+  { name: 'rms100',     type: 'Uint8'  },
+  { name: 'peak100',    type: 'Uint8'  },
+  { name: 'tilt',       type: 'Int8'   },
+  { name: 'pitch',      type: 'Int8'   },
+  { name: 'roll',       type: 'Int8'   },
+];
+
+// ── State ──
+let records   = [];      // array of parsed objects
+let sortCol   = null;
+let sortDir   = 1;
+let rawBuffer = null;    // ArrayBuffer for CSV export
+
+// ── Parsing ──
+function parseBuffer(buf) {
+  rawBuffer = buf;
+  const n = Math.floor(buf.byteLength / RECORD_SIZE);
+  const out = [];
+  const view = new DataView(buf);
+  const LE = true;
+
+  for (let i = 0; i < n; i++) {
+    let off = i * RECORD_SIZE;
+    const raw = {};
+    for (const f of STRUCT) {
+      const bytes = { 'Uint8':1,'Int8':1,'Int16':2,'Uint16':2 }[f.type];
+      raw[f.name] = view[`get${f.type}`](off, LE);
+      off += bytes;
+    }
+    out.push({
+      row:        i + 1,
+      time:       `${String(raw.tMin).padStart(2,'0')}:${String(raw.tSec).padStart(2,'0')}`,
+      tMin:       raw.tMin,
+      tSec:       raw.tSec,
+      rpm:        raw.rpm,
+      voltage:    raw.voltage10 / 10,
+      current:    raw.current10 / 10,
+      power:      raw.power,
+      throttle:   raw.throttle,
+      batt:       raw.batt,
+      watthour:   raw.watthour,
+      tempMosfet: raw.tempMosfet,
+      powerAvg:   raw.powerAvg,
+      rms:        raw.rms100  / 100,
+      peak:       raw.peak100 / 100,
+      tilt:       raw.tilt,
+      pitch:      raw.pitch,
+      roll:       raw.roll,
+    });
+  }
+  return out;
+}
+
+// ── Simple ride-analysis flags (mirrors C logic) ──
+let TAKEOFF_W   = 1800, TAKEOFF_N = 3;
+const TAKEOFF_MARGIN = 200, TAKEOFF_MIN = 300;
+const FOIL_RMS    = 0.18, FOIL_PEAK = 0.30;
+const FOIL_TILT   = 25,  FOIL_ROLL = 20, FOIL_PITCH = 20;
+const FALL_TILT   = 28,  FALL_ROLL  = 25, FALL_PITCH = 25, FALL_RMS = 0.12;
+
+// Aggiorna TAKEOFF_W dalla potenza max corrente del VESC (/vescPower)
+async function refreshTakeoffW() {
+  try {
+    const res = await fetch('/vescPower');
+    if (!res.ok) return;
+    const wmax = parseInt(await res.text(), 10);
+    if (wmax > 0) TAKEOFF_W = Math.max(TAKEOFF_MIN, wmax - TAKEOFF_MARGIN);
+  } catch (e) { /* fallback: resta 1800 */ }
+}
+
+function flagRecords(recs) {
+  let consHi = 0, inTakeoff = false, afterTakeoff = false;
+  let inWave  = false, fallSamp = 0;
+  recs.forEach(r => {
+    // fall
+    const fall = Math.abs(r.tilt)>FALL_TILT || Math.abs(r.roll)>FALL_ROLL ||
+                 Math.abs(r.pitch)>FALL_PITCH || r.rms < FALL_RMS;
+    if (fall) { fallSamp++; } else { fallSamp = 0; }
+    r.inFall = fallSamp >= 2;
+
+    // takeoff
+    const hiPow = r.power > TAKEOFF_W && r.throttle > 10;
+    if (hiPow) { consHi++; inTakeoff = true; afterTakeoff = true; }
+    else        { if (inTakeoff && consHi >= TAKEOFF_N) r.isTakeoffEnd = true;
+                  consHi = 0; inTakeoff = false; }
+    r.inTakeoff = inTakeoff;
+
+    // wave
+    const motorOff  = r.throttle <= 5 && r.power < 50;
+    const foilOk    = (r.rms >= FOIL_RMS || r.peak >= FOIL_PEAK) &&
+                      Math.abs(r.tilt)<=FOIL_TILT && Math.abs(r.pitch)<=FOIL_PITCH &&
+                      Math.abs(r.roll)<=FOIL_ROLL;
+    r.inWave = afterTakeoff && motorOff && foilOk && !r.inFall;
+    if (!r.inWave) inWave = false;
+    if (r.inWave && !inWave) inWave = true;
+  });
+}
+
+// ── Stats ──
+function updateStats(recs, fileSize) {
+  if (!recs.length) return;
+  const last = recs[recs.length-1];
+  const volts  = recs.map(r=>r.voltage);
+  const maxP   = Math.max(...recs.map(r=>r.power));
+  const maxT   = Math.max(...recs.map(r=>r.tempMosfet));
+  document.getElementById('s-samples').textContent  = recs.length;
+  document.getElementById('s-dur').textContent      = last.time;
+  document.getElementById('s-vmin').textContent     = Math.min(...volts).toFixed(1)+' V';
+  document.getElementById('s-vmax').textContent     = Math.max(...volts).toFixed(1)+' V';
+  document.getElementById('s-pmax').textContent     = 'W max';
+  document.getElementById('s-pmaxval').textContent  = maxP+' W';
+  document.getElementById('s-wh').textContent       = last.watthour+' Wh';
+  document.getElementById('s-tmax').textContent     = maxT+' °C';
+  document.getElementById('s-size').textContent     = (fileSize/1024).toFixed(1)+' KB';
+  document.getElementById('stats-bar').classList.add('visible');
+}
+
+// ── Render ──
+const maxPow = 3000, maxBat = 99, maxThr = 99;
+
+function angle(v) {
+  return (v >= 0 ? '+' : '') + v + '°';
+}
+function fmt1(v) { return v.toFixed(1); }
+function fmt2(v) { return v.toFixed(2); }
+
+function buildRows(recs) {
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = '';
+  const frag = document.createDocumentFragment();
+
+  recs.forEach(r => {
+    const tr = document.createElement('tr');
+    if      (r.inFall)    tr.classList.add('fall-row');
+    else if (r.inTakeoff) tr.classList.add('takeoff-row');
+    else if (r.inWave)    tr.classList.add('wave-row');
+
+    const tagHtml = r.inFall    ? '<span class="tag tag-fall">FALL</span>'   :
+                    r.inTakeoff ? '<span class="tag tag-to">TO</span>'        :
+                    r.inWave    ? '<span class="tag tag-wave">WAVE</span>'    : '';
+
+    const powPct = Math.min(100, r.power/maxPow*100);
+    const batPct = Math.min(100, r.batt);
+    const thrPct = Math.min(100, r.throttle);
+
+    tr.innerHTML = `
+      <td>${r.row}${tagHtml}</td>
+      <td class="time-cell">${r.time}</td>
+      <td class="volt-cell">${fmt1(r.voltage)}</td>
+      <td class="curr-cell">${fmt1(r.current)}</td>
+      <td class="pow-cell"><div class="bar-wrap"><div class="bar bar-pow" style="width:${powPct*0.6}px"></div>${r.power}</div></td>
+      <td class="thr-cell"><div class="bar-wrap"><div class="bar bar-thr" style="width:${thrPct*0.5}px"></div>${r.throttle}</div></td>
+      <td>${r.powerAvg}</td>
+      <td>${r.watthour}</td>
+      <td class="bat-cell"><div class="bar-wrap"><div class="bar bar-bat" style="width:${batPct*0.4}px"></div>${r.batt}</div></td>
+      <td class="temp-cell">${r.tempMosfet}</td>
+      <td class="rpm-cell">${r.rpm}</td>
+      <td class="imu-cell">${fmt2(r.rms)}</td>
+      <td class="imu-cell">${fmt2(r.peak)}</td>
+      <td class="imu-cell">${angle(r.tilt)}</td>
+      <td class="imu-cell">${angle(r.pitch)}</td>
+      <td class="imu-cell">${angle(r.roll)}</td>`;
+    frag.appendChild(tr);
+  });
+  tbody.appendChild(frag);
+}
+
+function render(recs) {
+  buildRows(recs);
+  document.getElementById('dataTable').style.display = '';
+  document.getElementById('empty').style.display = 'none';
+}
+
+// ── Sort ──
+document.getElementById('col-row').addEventListener('click', e => {
+  const th = e.target.closest('th');
+  if (!th || th.dataset.col === 'row') return;
+  const col = th.dataset.col;
+  if (sortCol === col) { sortDir *= -1; }
+  else                 { sortCol = col; sortDir = 1; }
+  document.querySelectorAll('th').forEach(t => t.classList.remove('sort-asc','sort-desc'));
+  th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
+  const sorted = [...records].sort((a,b) => {
+    const av = a[col], bv = b[col];
+    return typeof av === 'string' ? av.localeCompare(bv)*sortDir : (av-bv)*sortDir;
+  });
+  buildRows(sorted);
+});
+
+// ── Load ──
+async function loadFile(num) {
+  const bar = document.getElementById('loadbar');
+  const statusEl = document.getElementById('status');
+  bar.style.display = 'block';
+  bar.style.width = '30%';
+  statusEl.className = '';
+  statusEl.textContent = `Scarico vescDat${num}.bin…`;
+  document.getElementById('btnLoad').disabled = true;
+  document.getElementById('btnCsv').disabled  = true;
+
+  try {
+    const url = `/vescbin?number=${num}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    bar.style.width = '70%';
+    const buf = await res.arrayBuffer();
+    bar.style.width = '100%';
+
+    if (buf.byteLength === 0) throw new Error('File vuoto');
+    if (buf.byteLength % RECORD_SIZE !== 0) {
+      statusEl.className = 'err';
+      statusEl.textContent = `⚠ Dimensione anomala: ${buf.byteLength} byte (attesi multipli di ${RECORD_SIZE})`;
+    } else {
+      statusEl.textContent = '';
+    }
+
+    records = parseBuffer(buf);
+    await refreshTakeoffW();   // soglia dinamica aggiornata prima dell'analisi
+    flagRecords(records);
+    updateStats(records, buf.byteLength);
+    render(records);
+    document.getElementById('btnCsv').disabled = false;
+    if (!statusEl.textContent) {
+      statusEl.textContent = `✓ ${records.length} campioni caricati (${(buf.byteLength/1024).toFixed(1)} KB)`;
+    }
+  } catch(err) {
+    statusEl.className = 'err';
+    statusEl.textContent = `✗ Errore: ${err.message}`;
+    document.getElementById('dataTable').style.display = 'none';
+    document.getElementById('empty').style.display = '';
+  } finally {
+    setTimeout(() => { bar.style.width='0'; setTimeout(()=>bar.style.display='none', 400); }, 600);
+    document.getElementById('btnLoad').disabled = false;
+  }
+}
+
+document.getElementById('btnLoad').addEventListener('click', () => {
+  const v = document.getElementById('fileSelect').value;
+  if (v === '') return;
+  loadFile(v);
+});
+
+document.getElementById('fileSelect').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('btnLoad').click();
+});
+
+// ── CSV Export ──
+document.getElementById('btnCsv').addEventListener('click', () => {
+  if (!records.length) return;
+  const header = 'n,tempo,voltage_V,current_A,power_W,throttle_pct,power_avg_W,watthour_Wh,batt_pct,temp_C,rpm,rms_g,peak_g,tilt_deg,pitch_deg,roll_deg';
+  const rows = records.map(r =>
+    `${r.row},${r.time},${r.voltage.toFixed(1)},${r.current.toFixed(1)},${r.power},${r.throttle},${r.powerAvg},${r.watthour},${r.batt},${r.tempMosfet},${r.rpm},${r.rms.toFixed(2)},${r.peak.toFixed(2)},${r.tilt},${r.pitch},${r.roll}`
+  );
+  const csv = [header, ...rows].join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+  const fn = document.getElementById('fileSelect').value;
+  a.download = `vescDat${fn}.csv`;
+  a.click();
+});
+</script>
+</body>
+</html>
