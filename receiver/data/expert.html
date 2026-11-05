@@ -227,7 +227,7 @@
 
     <!-- BATTERY ALARM THRESHOLDS -->
     <section class="card">
-        <h2>Battery Low Alarm (vibration)</h2>
+        <h2>Battery Alarm (low battery)</h2>
         <p>The receiver checks the battery voltage and sends an alarm flag to the controller, which vibrates. The pack (10s or 12s) is detected at power-on from the voltage (12s if &gt; 43 V) and the matching thresholds are used. Values are stored in the receiver EEPROM.</p>
         <p>Detected pack: <b id="battPack">...</b></p>
         <h4>10s pack</h4>
@@ -239,7 +239,7 @@
         <p class="setting-note" id="battAlertMsg"></p>
     </section>
 
-        <!-- FIRMWARE UPGRADE -->
+    <!-- FIRMWARE UPGRADE -->
     <section class="card">
         <h2>Firmware upgrade</h2>
         <p><button class="button" id="upgrade">Upgrade firmware from server</button></p>
@@ -271,30 +271,7 @@
         <p><strong>Free:</strong> <span id="free"></span> bytes</p>
         <hr>
         <h4>Upload file to filesystem</h4>
-        <div id="dropZone" tabindex="0" style="border:2px dashed #555;border-radius:8px;padding:22px 12px;text-align:center;cursor:pointer;background:#2a2a2a;transition:all .15s">
-            <div style="font-size:1.6rem">&#128194;</div>
-            <div>Drag file here or <u>click to select file</u></div>
-            <div id="fileName" style="margin-top:8px;opacity:0.8">No file selected</div>
-            <input type="file" id="fileInput" style="display:none">
-        </div>
-        <script>
-        (function(){
-            var dz=document.getElementById('dropZone'), inp=document.getElementById('fileInput'), nm=document.getElementById('fileName');
-            function upd(){ nm.textContent = inp.files[0] ? inp.files[0].name + ' (' + inp.files[0].size + ' bytes)' : 'Nessun file selezionato'; }
-            function hl(on){ dz.style.borderColor = on ? '#3b82f6' : '#555'; dz.style.background = on ? '#1e3a5f' : '#2a2a2a'; }
-            dz.addEventListener('click', function(){ inp.click(); });
-            dz.addEventListener('keydown', function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); inp.click(); } });
-            inp.addEventListener('click', function(e){ e.stopPropagation(); });
-            inp.addEventListener('change', upd);
-            ['dragenter','dragover'].forEach(function(t){ dz.addEventListener(t, function(e){ e.preventDefault(); hl(true); }); });
-            ['dragleave','drop'].forEach(function(t){ dz.addEventListener(t, function(e){ e.preventDefault(); hl(false); }); });
-            dz.addEventListener('drop', function(e){
-                if(e.dataTransfer.files && e.dataTransfer.files.length){
-                    var dt=new DataTransfer(); dt.items.add(e.dataTransfer.files[0]); inp.files=dt.files; upd();
-                }
-            });
-        })();
-        </script>
+        <input type="file" id="fileInput">
         <br><br>
         <button class="button" onclick="uploadFile()">Upload File</button>
         <br><br>
@@ -399,153 +376,6 @@
         <p id="vescMsg"></p>
     </section>
 
-	
-    <!-- ACCELEROMETER -->
-    <section class="card">
-        <h2>Accelerometer status</h2>
-        <p>On this device the accelerometer sensor is <b id="adxl345"></b></p>
-    </section>
-
-    <!-- ACCELEROMETER AXIS MAPPING -->
-    <section class="card">
-        <h2>Accelerometer axis mapping</h2>
-        <p>If the receiver is mounted in a different position, the accelerometer axes no longer match bow / pitch / roll.
-        Put the board in the three positions below and capture each one: the firmware works out the mapping, checks it
-        and saves it in EEPROM. After the mapping the zero offsets are recalculated from the level position.</p>
-        <p>Current mapping: <b id="axisCurrent">...</b><span id="axisImuState" style="color:#9ca3af"></span></p>
-        <div style="margin:8px 0"><button class="button" id="axisCap1">1. Capture level</button>
-            <span id="axisP1" style="color:#9ca3af;margin-left:10px"></span></div>
-        <div style="margin:8px 0"><button class="button" id="axisCap2">2. Capture nose up (~30&deg;)</button>
-            <span id="axisP2" style="color:#9ca3af;margin-left:10px"></span></div>
-        <div style="margin:8px 0"><button class="button" id="axisCap3">3. Capture right side up (~30&deg;)</button>
-            <span id="axisP3" style="color:#9ca3af;margin-left:10px"></span></div>
-        <br>
-        <button class="button" id="axisApply" disabled>Apply mapping</button>
-        <button class="button" id="axisReset">Restore default</button>
-        <p id="axisMsg" style="margin-top:8px"></p>
-        <p class="setting-note">Keep the board still while a capture runs (~0.5 s).</p>
-    </section>
-	
-<script>
-document.addEventListener('DOMContentLoaded', function(){
-    (function(){
-        var poses = [false, false, false];
-        function el(id){ return document.getElementById(id); }
-        function refresh(){ el('axisApply').disabled = !(poses[0] && poses[1] && poses[2]); }
-
-        // fetch con timeout: senza, un endpoint assente o muto lascia la card in silenzio
-        function jget(url, ms){
-            var ctrl = new AbortController();
-            var t = setTimeout(function(){ ctrl.abort(); }, ms || 4000);
-            return fetch(url, {signal: ctrl.signal, cache: 'no-store'}).then(function(r){
-                clearTimeout(t);
-                return r.text().then(function(body){
-                    if (!r.ok) { throw new Error('HTTP ' + r.status + ' ' + (body || '').substring(0, 60)); }
-                    try { return JSON.parse(body); }
-                    catch (e) { throw new Error('HTTP ' + r.status + ' but not JSON: ' + body.substring(0, 80)); }
-                });
-            }, function(e){ clearTimeout(t); throw e; });
-        }
-
-        function loadAxis(){
-            jget('/axis', 4000).then(function(a){
-                el('axisCurrent').textContent = 'X=' + a.xn + '  Y=' + a.yn + '  Z=' + a.zn + (a.magic ? '  (custom)' : '  (default)');
-                el('axisImuState').textContent = a.connected ? '' : '  - accelerometer not connected';
-            }).catch(function(e){
-                el('axisCurrent').textContent = 'not available (' + e.message + ')';
-                el('axisImuState').textContent = '  - endpoint /axis not reachable: firmware without axis mapping?';
-            });
-        }
-
-        function capture(n){
-            el('axisMsg').textContent = 'Capturing (about 0.5 s): hold the board still...';
-            jget('/axis/pose?n=' + n, 4000).then(function(d){
-                if (!d.ok) { el('axisMsg').textContent = 'not captured: ' + (d.err || ('unexpected reply ' + JSON.stringify(d))); return; }
-                poses[n-1] = true;
-                el('axisP' + n).textContent = '\u2714 ' + d.x.toFixed(2) + ', ' + d.y.toFixed(2) + ', ' + d.z.toFixed(2) + ' g';
-                el('axisMsg').textContent = '';
-                refresh();
-            }).catch(function(e){ el('axisMsg').textContent = 'capture failed: ' + e.message; });
-        }
-
-        el('axisCap1').onclick = function(){ capture(1); };
-        el('axisCap2').onclick = function(){ capture(2); };
-        el('axisCap3').onclick = function(){ capture(3); };
-
-        el('axisApply').onclick = function(){
-            el('axisMsg').textContent = 'Applying...';
-            jget('/axis/apply', 5000).then(function(d){
-                if (d.ok) {
-                    el('axisMsg').textContent = 'Mapping applied: X=' + d.xn + '  Y=' + d.yn + '  Z=' + d.zn;
-                    poses = [false, false, false];
-                    el('axisP1').textContent = ''; el('axisP2').textContent = ''; el('axisP3').textContent = '';
-                    refresh(); loadAxis();
-                } else {
-                    el('axisMsg').textContent = 'Not applied: ' + (d.err || ('unexpected reply ' + JSON.stringify(d)));
-                }
-            }).catch(function(e){ el('axisMsg').textContent = 'apply failed: ' + e.message; });
-        };
-
-        el('axisReset').onclick = function(){
-            jget('/axis/reset', 4000).then(function(){
-                el('axisMsg').textContent = 'Default mapping restored (X=+Y, Y=+Z, Z=+X)';
-                poses = [false, false, false];
-                el('axisP1').textContent = ''; el('axisP2').textContent = ''; el('axisP3').textContent = '';
-                refresh(); loadAxis();
-            }).catch(function(e){ el('axisMsg').textContent = 'reset failed: ' + e.message; });
-        };
-
-        loadAxis();
-    })();
-    });
-    </script>
-
-
-    <!-- BOARD ORIENTATION (live) -->
-    <section class="card">
-        <h2>Board orientation</h2>
-        <p>Live values from the accelerometer, already remapped by the axis mapping above:
-        <b>pitch</b> positive = bow up, <b>roll</b> positive = right side up.</p>
-        <div style="display:flex;gap:40px;margin:10px 0 4px 0">
-            <div>
-                <div style="color:#9ca3af;font-size:0.85rem">Roll</div>
-                <div style="font-size:1.6rem"><span id="expRoll">0</span>&deg;</div>
-            </div>
-            <div>
-                <div style="color:#9ca3af;font-size:0.85rem">Pitch</div>
-                <div style="font-size:1.6rem"><span id="expPitch">0</span>&deg;</div>
-            </div>
-        </div>
-        <p class="setting-note" id="expOrientState"></p>
-        <button class="button" id="expCalib">Calibrate accelerometer offsets</button>
-        <p id="expCalibMsg" style="margin-top:8px"></p>
-        <p class="setting-note">Put the board <b>flat and still</b> before calibrating: the zero offsets are taken from that position.</p>
-    </section>
-
-    <script>
-    document.addEventListener('DOMContentLoaded', function(){
-        function el(id){ return document.getElementById(id); }
-        function poll(){
-            fetch('/data', {cache:'no-store'}).then(function(r){ return r.json(); }).then(function(d){
-                var rv = Number(d.roll), pv = Number(d.pitch);
-                if (isFinite(rv)) el('expRoll').textContent = rv.toFixed(1);
-                if (isFinite(pv)) el('expPitch').textContent = pv.toFixed(1);
-                el('expOrientState').textContent = '';
-            }).catch(function(){
-                el('expOrientState').textContent = 'no data from /data (receiver busy or not connected)';
-            });
-        }
-        poll();
-        setInterval(poll, 1000);
-        el('expCalib').onclick = function(){
-            el('expCalibMsg').textContent = 'Calibrating: keep the board level and still...';
-            fetch('/xyzCalib', {cache:'no-store'}).then(function(r){ return r.text(); }).then(function(){
-                setTimeout(function(){ el('expCalibMsg').textContent = 'Calibration done: offsets saved in EEPROM.'; }, 1600);
-            }).catch(function(e){ el('expCalibMsg').textContent = 'calibration failed: ' + e; });
-        };
-    });
-    </script>
-
     <!-- BACK HOME -->
     <section class="card">
         <button class="button" onclick="window.location.href='/index.html'">Back home</button>
@@ -553,7 +383,12 @@ document.addEventListener('DOMContentLoaded', function(){
 		<button class="button" onclick="window.location.href='test.html'">Sensors Data Monitor</button>	
     </section>
 	
-    <!-- REBOOT -->	
+    <!-- ACCELEROMETER & REBOOT -->
+    <section class="card">
+        <h2>Accelerometer status</h2>
+        <p>On this device the accelerometer sensor is <b id="adxl345"></b></p>
+    </section>
+
     <section class="card">
         <button class="button" id="reboot">Reboot receiver board</button>
     </section>

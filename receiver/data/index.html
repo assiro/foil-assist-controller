@@ -41,52 +41,7 @@ html,body{height:100%;font-family:'Segoe UI','Roboto',system-ui,sans-serif;backg
 .ft{margin-top:auto;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px;font-size:10px;color:var(--mu);letter-spacing:.5px}
 .sp{color:rgba(100,116,139,.4)}.ft b{color:var(--cy);font-weight:500}
 @media(min-width:600px){.sh{padding:32px 24px}.lg{width:260px}.mb{padding:16px 20px}.bl{font-size:19px}}
-
-.record-card{position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:center;gap:3px;padding:12px 16px 10px;background:linear-gradient(145deg,rgba(10,28,38,.96),rgba(8,14,22,.94));border:1px solid rgba(34,211,238,.28);border-radius:var(--r);box-shadow:0 8px 28px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.035);text-align:center;backdrop-filter:blur(12px)}
-.record-card::before{content:'';position:absolute;top:0;left:15%;right:15%;height:1px;background:linear-gradient(90deg,transparent,#22d3ee,transparent)}
-.record-kicker{font-size:22px;line-height:1.1;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--cy)}
-.record-title{font-size:12px;font-weight:650;letter-spacing:.2px;color:var(--tx)}
-.record-time{font-size:clamp(28px,10vw,42px);line-height:1;font-weight:750;letter-spacing:3px;font-variant-numeric:tabular-nums;color:#4ade80;text-shadow:0 0 22px rgba(74,222,128,.18);padding:0}
-.record-unit{font-size:13px;line-height:1.1;letter-spacing:1.4px;text-transform:uppercase;color:var(--mu)}
-.record-note{font-size:14px;color:var(--mu);line-height:1.45}
-.record-link{margin-top:3px;color:var(--cy);font-size:12px;text-decoration:none;font-weight:600}
-.record-link:active{opacity:.7}
 </style>
-<script type="text/javascript">
-    // Il firmware espone il record assoluto in secondi tramite /readRecord.
-    // Usiamo fetch nativo: index.html non carica jQuery.
-    async function fetchRecord() {
-        const output = document.getElementById("absRecord");
-        const status = document.getElementById("recordStatus");
-        if (!output) return;
-
-        try {
-            const response = await fetch("/readRecord", { cache: "no-store" });
-            if (!response.ok) throw new Error("HTTP " + response.status);
-
-            const raw = await response.text();
-            const secs = Number.parseInt(raw.trim(), 10);
-
-            if (!Number.isFinite(secs) || secs <= 0) {
-                output.textContent = "--:--";
-                if (status) status.textContent = "No record stored yet";
-                return;
-            }
-
-            const minutes = Math.floor(secs / 60);
-            const seconds = secs % 60;
-            output.textContent =
-                String(minutes).padStart(2, "0") + ":" +
-                String(seconds).padStart(2, "0");
-
-            if (status) status.textContent = "Longest continuous foil session";
-        } catch (error) {
-            output.textContent = "--:--";
-            if (status) status.textContent = "Record temporarily unavailable";
-            console.warn("Unable to read foil record:", error);
-        }
-    }
-</script>
 </head>
 <body>
 <div class="bg-cf"></div>
@@ -98,22 +53,14 @@ html,body{height:100%;font-family:'Segoe UI','Roboto',system-ui,sans-serif;backg
 <a class="mb" href="rides.html"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><div class="bl">Rides Data</div><div class="ba">›</div></a>
 <a class="mb" href="setup.html"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14M14.12 2.05a10 10 0 0 1 0 19.9M9.88 2.05a10 10 0 0 0 0 19.9"/></svg></div><div class="bl">Settings</div><div class="ba">›</div></a>
 <a class="mb" href="test.html"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 2v7l3 3-3 3v7h20v-7l-3-3 3-3V2H2z"/><line x1="2" y1="9" x2="22" y2="9"/><line x1="2" y1="15" x2="22" y2="15"/></svg></div><div class="bl">Sensors Monitor</div><div class="ba">›</div></a>
-<!--<a class="mb" href="https://www.foilassistproject.com" target="_blank"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div><div class="bl">Info Web</div><div class="ba">↗</div></a> -->
+<a class="mb" href="https://www.foilassistproject.com" target="_blank"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div><div class="bl">Info Web</div><div class="ba">↗</div></a>
 </nav>
-<!-- ALL-TIME BEST WAVE / PUMP & GLIDE -->
-<section class="record-card" aria-label="All-time best foil session">
-    <div class="record-kicker">🏆 Best Record</div>
-<!--    <h2 class="record-title">All-time Best Wave / Pump &amp; Glide</h2>-->
-    <div class="record-time" id="absRecord" aria-live="polite">--:--</div>
-    <div class="record-unit">Minutes : Seconds</div>
-<!--    <p class="record-note" id="recordStatus">Reading best time…</p>-->
-</section>
 <footer class="ft"><span>Written by Roberto Assiro</span><span class="sp">·</span><span>Firmware <b id="vr"></b></span><span class="sp">·</span><span>TecnoFly 2026</span></footer>
 </main>
 <script>
 function ud(){fetch("/data").then(r=>r.json()).then(d=>{let v=parseInt(d.batpercentage);document.getElementById("bv").textContent=v+"%";let f=document.getElementById("bf");f.style.width=Math.min(v,100)+"%";f.style.background=v>60?"#22d3ee":v>30?"#fbbf24":"#f87171";document.getElementById("ro").textContent=Math.round(d.roll)+"°";document.getElementById("pi").textContent=Math.round(d.pitch)+"°"}).catch(()=>{})}
 function fv(){fetch("/ver").then(r=>r.text()).then(t=>document.getElementById("vr").textContent=t).catch(()=>{})}
-setInterval(ud,1e3);ud();fv();fetchRecord();setInterval(fetchRecord,30000);
+setInterval(ud,1e3);ud();fv();
 </script>
 </body>
 </html>
