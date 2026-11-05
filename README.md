@@ -77,7 +77,13 @@ The ADXL345 accelerometer is optional but provides important safety and analytic
 - Detects board and foil movements to measure wave timing and pump cadence
 
 ---
+## VESC Motor Controller Compatible
+The motor controller used are based on VESC system
+- I used 75100 V2 Makerbase and Flypsky
+- The DQ-DRIVES Classic M (not direct tested yet)
+![controllers](images/vesc controllers.JPG)
 
+---
 ## Radio Transmission
 
 2.4 GHz radio is highly sensitive to water — it can be completely blocked when the remote is submerged. To address this, a **passive antenna is installed inside the board**, extending the effective range even when the rider's hand dips into the water.
