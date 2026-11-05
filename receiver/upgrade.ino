@@ -17,7 +17,7 @@ void setupMode(){ // UPGRADE FIRMWARE AND WEBSERVER
           String payload;
           WiFiClient client;
           HTTPClient http;
-          String serverPath = upgradeServer + "foilAssistUpgrade.php?T=R&V=" + VERSION;
+          String serverPath = String(upgradeServer) + "foilAssistUpgrade.php?T=R&V=" + VERSION;
           Serial.println(serverPath);
           http.begin(client, serverPath.c_str());
           int httpResponseCode = http.GET();
@@ -32,29 +32,29 @@ void setupMode(){ // UPGRADE FIRMWARE AND WEBSERVER
             Serial.println(httpResponseCode);
           }
           http.end();
-          Serial.println("State setup OFF saved in flash memory");  
+//          Serial.println("State setup OFF saved in flash memory");  
           EEPROM.write(4, 0);
           EEPROM.commit();
           if(payload == "true"){
                   downloadFile(); // upgrade files in little fs              
-                  Serial.println("Downloading firmware...");     
-                  t_httpUpdate_return ret = ESPhttpUpdate.update(upgradeServer + upgradeFile);
+                  Serial.println("Firmware...");     
+                  t_httpUpdate_return ret = ESPhttpUpdate.update(String(upgradeServer) + upgradeFile);
                   switch(ret) {
                       case HTTP_UPDATE_FAILED: Serial.printf("HTTP_UPDATE_FAILD Error (%d): %s", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());break;
                       case HTTP_UPDATE_NO_UPDATES: Serial.println("HTTP_UPDATE_NO_UPDATES");break;
                       case HTTP_UPDATE_OK: Serial.println("HTTP_UPDATE_OK");break;
                   } 
           }else{        
-          Serial.println("No Upgrade available");
+          Serial.println("No available");
           } 
-          Serial.println("Reboot...");
+//          Serial.println("Reboot...");
           ESP.restart();
       }
   delay(500);
   Serial.print(".");
   count++;
   }
-  Serial.println("Setup OFF on flash memory");  
+//  Serial.println("Setup OFF on flash memory");  
   EEPROM.write(4, 0);
   EEPROM.commit();  
   ESP.restart();  
@@ -63,39 +63,30 @@ void setupMode(){ // UPGRADE FIRMWARE AND WEBSERVER
 
 
 void downloadFile() {
-    Serial.println("Download files...");
-
     const char *filenames[] = {
-      "/index.html", "/setup.html", "/test.html", "/ride.html",
+      "/index.html", "/setup.html", "/test.html", "/ride.html", "/rides.html",
       "/assist.css", "/favicon.ico", "/bootstrap.min.js", "/rideAnalysis.js",
-      "/jquery.js", "/message.txt", "/expert.html",
-      "/tecnofly_logo.gif", "/uplot.iife.min.js", "/uplot.min.css"
+      "/jquery.js", "/expert.html", "/dataviewer.html", "/tecnofly_logo.gif", 
+      "/uplot.iife.min.js", "/uplot.min.css", "/fiber.jpg"
     };
-
-    const char *serverBase = "https://www.eoloonline.it/firmware/foilAssist/webServer";
 
     HTTPClient http;
 
     for (int i = 0; i < sizeof(filenames) / sizeof(filenames[0]); i++) {
       String url = String(serverBase) + String(filenames[i]);
-      Serial.print("Downloading: ");
+//      Serial.print("Downloading: ");
       Serial.print(String(filenames[i]));
-
       http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
       http.setUserAgent("ESP32Downloader/1.0");
       http.setTimeout(20000);  // 20 secondi
-
       http.begin(url);
-
       int httpCode = http.GET();
-
       if (httpCode == HTTP_CODE_OK) {
         int len = http.getSize();
         WiFiClient *stream = http.getStreamPtr();
-
         File file = LittleFS.open(filenames[i], FILE_WRITE);
         if (!file) {
-          Serial.println(" -> Error opening file!");
+//          Serial.println(" -> Error opening file!");
           http.end();
           continue;
         }
@@ -114,17 +105,13 @@ void downloadFile() {
           }
 
           if (millis() - lastTime > 15000) {
-            Serial.println(" -> Timeout durante ricezione!");
+//            Serial.println(" -> Timeout durante ricezione!");
             break;
           }
-
           delay(1);
         }
         file.close();
         Serial.printf(" -> Saved OK! (%d byte)\n", total);
-
-      } else {
-        Serial.printf(" -> Error HTTP: %d\n", httpCode);
       }
 
       http.end();

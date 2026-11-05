@@ -3,14 +3,15 @@
 #define SAMPLE_RATE_HZ 12
 #define WINDOW_SIZE 10
 #define G 9.80665
-// buffer
-float dynMag[WINDOW_SIZE];
+
+float dynMag[WINDOW_SIZE];      // buffer
 int sampleIndex = 0;
-float peak;
-float rms;
-float roll;
-float pitch;
-float tilt;
+
+float rms   = 0.0f;
+float peak  = 0.0f;
+float tilt  = 0.0f;
+float pitch = 0.0f;
+float roll  = 0.0f;
 
 float axBuf[WINDOW_SIZE];
 float ayBuf[WINDOW_SIZE];
@@ -52,9 +53,9 @@ uint fileCounter;
 
 void adxl345Setup(){
         if (!accel.begin()) {
-            Serial.println("❌ADXL345 not found");
+            Serial.println("❌ADXL345");
         }else{
-              Serial.println("✅ADXL345 ready");
+              Serial.println("✅ADXL345");
               accelerometerConnected = true;
         }
         accel.setRange(ADXL345_RANGE_4_G);     // molto più sensibile
@@ -63,39 +64,42 @@ void adxl345Setup(){
 }
 
 
-void getTelemetry() {
-        unsigned long now = millis();
-        if(accelerometerConnected){
-                if (now - lastSample >= sampleInterval) {
-                        lastSample = now;
-                        acquireAdxlSample();
-                }
-                if (sampleIndex >= WINDOW_SIZE) {                        
-                        analyzeAdxlFifo();
-//Serial.print("pitch:"); Serial.print(pitch); Serial.print(" - roll:"); Serial.print(roll); Serial.print(" - tilt:"); Serial.println(tilt);
-                        getVescData();
-                        sampleIndex = 0;
+// ── in adxl345.ino → getTelemetry() ──
+// Timer progressivo per IMU e VESC: mantiene frequenza costante
+// anche quando getVescData() impiega più del previsto.
+// Catch-up protection: se il ritardo accumulato supera 2 intervalli,
+// resetta il timer per evitare burst di recupero.
 
-                                ///// TEST FILE IMU
-                        if ((inactivityCounter > 100) and (gravityAlarm) and (accelerometerConnected) and (imuFile)){closeImuFile();}
-                        if(recordEnable){
-                                if(imuFile){
-                                        fileCounter++;
-                                        if(fileCounter == 5){
-                                                imuFile.flush();
-                                                fileCounter = 0;
-                                        }
-                                }
-                        }
-                }
-        }else{
-                checkBoardPositionBySwitch(); 
-                if (millis() - lastDataVesc >= 1000) {
-                        getVescData();
-                        lastDataVesc = now;
-                }
-                
+void getTelemetry() {
+    unsigned long now = millis();
+    
+    if (accelerometerConnected) {
+        // IMU a ~12Hz con timer progressivo — fase costante
+        if (now - lastSample >= sampleInterval) {
+            lastSample += sampleInterval;
+            if (now - lastSample >= sampleInterval) {  // catch-up
+                lastSample = now;
+            }
+            acquireAdxlSample();
         }
+        // Analisi finestra ogni 10 campioni
+        if (sampleIndex >= WINDOW_SIZE) {
+            analyzeAdxlFifo();
+            sampleIndex = 0;
+        }
+    } else {
+        checkBoardPositionBySwitch();
+    }
+    
+    // VESC ogni 1000ms con timer progressivo — chiamata sempre necessaria
+    // per inviare dati (anche azzerati) al TX via ESP-NOW
+    if (now - lastDataVesc >= 1000) {
+        lastDataVesc += 1000;
+        if (now - lastDataVesc >= 1000) {   // catch-up
+            lastDataVesc = now;
+        }
+        getVescData();
+    }
 }
 
 
@@ -107,15 +111,31 @@ void acquireAdxlSample() {
         ayBuf[bufIndex] = event.acceleration.z / G - ayOffset;
         azBuf[bufIndex] = event.acceleration.x / G - azOffset;
         bufIndex = (bufIndex + 1) % WINDOW_SIZE; //bufIndex++;
-
         float x = event.acceleration.y / G - axOffset;
         float y = event.acceleration.z / G - ayOffset;
         float z = event.acceleration.x / G - azOffset;
-/*
-        tilt = atan2(sqrt(x * x + y * y), z) * 180.0 / PI;
-        roll  = atan2(y, z) * 180.0 / PI;
-        pitch = atan2(-x, sqrt(y*y + z*z)) * 180.0 / PI;
-*/
+
+        float sampleTilt = atan2(sqrt(x*x + y*y), z) * 180.0 / PI;
+
+        // DIRECT CUT con DEBOUNCE:
+        // scatta solo se raw tilt supera soglia per N campioni consecutivi
+        // cosí le vibrazioni e i movimenti brevi non fanno falsi positivi,
+        // ma un'inclinazione reale viene rilevata in ~400ms
+        if (directCutEnabled && !directCutActive && throttle > 10) {
+            static int dcCount = 0;
+            if (sampleTilt > directCutDegrees) {
+                dcCount++;
+                if (dcCount >= 8) {     //cambiato da 5 per falsi positivi 20 09 2026
+                    directCutActive = true;
+                    directCutStart = millis();
+                    esc.write(0);
+                    logEvent("ALLARM - STOP PROPELLER");
+                }
+            } else {
+                dcCount = 0;
+            }
+        }
+
         // write to imu.bin file
         if(recordEnable){
                 if (imuFile) {
@@ -127,7 +147,7 @@ void acquireAdxlSample() {
                 }
         }
 
-        // low-pass → gravity
+        // low-pass -> gravity estimate
         gx = alpha * gx + (1.0 - alpha) * x;
         gy = alpha * gy + (1.0 - alpha) * y;
         gz = alpha * gz + (1.0 - alpha) * z;
@@ -135,14 +155,7 @@ void acquireAdxlSample() {
         float dy = y - gy;
         float dz = z - gz;
 
-//        float dynamicMag = sqrt(dx*dx + dy*dy + dz*dz);
-//        float dynamicMag = max(max(abs(dx), abs(dy)), abs(dz));
-
-//        dynMag[sampleIndex++] = dynamicMag;           // cambiato valori piccoli
-//        dynMag[sampleIndex++] = abs(dx) + abs(dy) + abs(dz);
         dynMag[sampleIndex++] = max(max(abs(dx),abs(dy)),abs(dz));
-//Serial.print("x:");Serial.print(dx); Serial.print("   y:");Serial.print(dy);Serial.print("   z:");Serial.println(dz);
-//Serial.print("pitch:"); Serial.print(pitch); Serial.print(" - roll:"); Serial.print(roll); Serial.print(" - tilt:"); Serial.println(tilt);
 }
 
 
@@ -163,7 +176,6 @@ void analyzeAdxlFifo() {
         }
 
         rms = sqrt(sumSq / WINDOW_SIZE);
-
         float axMean = sumX / WINDOW_SIZE;
         float ayMean = sumY / WINDOW_SIZE;
         float azMean = sumZ / WINDOW_SIZE;
@@ -176,19 +188,13 @@ void analyzeAdxlFifo() {
         }
 
         // === ANGOLI MEDIATI ===
- //       tilt  = atan2(sqrt(axMean*axMean + ayMean*ayMean), azMean) * 180.0 / PI;
         float h = sqrt(axMean*axMean + ayMean*ayMean);
         tilt = atan2(h, azMean) * 180.0 / PI;
         roll  = atan2(ayMean, azMean) * 180.0 / PI;
         pitch = atan2(-axMean, sqrt(ayMean*ayMean + azMean*azMean)) * 180.0 / PI;
-        
-//Serial.print("RMS: "); Serial.print(rms,3); Serial.print("  Peak: "); Serial.print(peak,3); Serial.print("  RollAvg: "); Serial.print(roll,1); Serial.print("  PitchAvg: "); Serial.print(pitch,1); Serial.print("  TiltAvg: "); Serial.println(tilt,1);
 
         AdxlBoardPosition();
-
 }
-
-
 
 void AdxlBoardPosition(){
         if ((checkPositionEnable) and (tilt > thresholdDegrees)) {
@@ -196,8 +202,9 @@ void AdxlBoardPosition(){
                         if (gravityPositionStartTime == 0) {
                                 gravityPositionStartTime = millis();
                         } else if (millis() - gravityPositionStartTime >= gravityStartThreshold) {
-                                Serial.println("⛔ LOCK");
+                        //        Serial.println("⛔ LOCK");
                                 gravityAlarm = true;
+                        //        logEvent("GRAVITY_ALARM_ON");
                         }
                 }
                 gravityPositionReleseTime = 0; 
@@ -206,8 +213,9 @@ void AdxlBoardPosition(){
                         if (gravityPositionReleseTime == 0) {
                                 gravityPositionReleseTime = millis();
                         } else if (millis() - gravityPositionReleseTime >= gravityReleaseThreshold) {
-                                Serial.println("✅ UNLOCK");
+                        //        Serial.println("✅ UNLOCK");
                                 gravityAlarm = false;
+                        //        logEvent("GRAVITY_ALARM_OFF");
                         }
                 }
                 gravityPositionStartTime = 0;
@@ -218,17 +226,10 @@ void AdxlBoardPosition(){
 bool openImuFile() {
         if(accelerometerConnected){
                         char imuFileName[10] = "/imu";
-
-        //                itoa(fileName, fileNameChar,10);
-        //                strcat(imuFileName, fileNameChar);
-
                         strcat(imuFileName, ".bin");
                         Serial.print(imuFileName);  
                         imuFile = LittleFS.open(imuFileName, FILE_WRITE);
-                        if (!imuFile) {
-                                Serial.println("❌ No imu.bin");
-                                return false;
-                        }
+                        if (!imuFile) {return false;}
                         FileHeader header;
                         header.magic    = 0x464F494C; // 'FOIL'
                         header.version  = 1;
@@ -236,7 +237,6 @@ bool openImuFile() {
                         header.start_ms = millis();
                         imuFile.write((uint8_t*)&header, sizeof(header));
                         imuFile.flush();
-                        Serial.println(" New IMU file created!");
                         return true;
         }
         return false;
@@ -247,7 +247,6 @@ void closeImuFile() {
         if (imuFile) {
                 imuFile.flush();
                 imuFile.close();
-                Serial.println("✅ IMU file chiuso");
         }
 }
 
@@ -271,10 +270,6 @@ void calibrateAccelerometer() {
         axOffset = sumX / samples;
         ayOffset = sumY / samples;
         azOffset = (sumZ / samples) - 1.0;   
-        Serial.println("Calibration complete:");
-        Serial.print("axOffset: "); Serial.println(axOffset,4);
-        Serial.print("ayOffset: "); Serial.println(ayOffset,4);
-        Serial.print("azOffset: "); Serial.println(azOffset,4);
         EEPROM.put(16, axOffset);
         EEPROM.put(20, ayOffset);
         EEPROM.put(24, azOffset);
@@ -294,6 +289,7 @@ void checkBoardPositionBySwitch() {
             } else {
                 if (!gravityAlarm && millis() - switchPressStartTime >= gravityStartThreshold) {
                     gravityAlarm = true;
+                    logEvent("GRAVITY_ALARM_ON");
                 }
             }
             switchReleaseStartTime = 0; 
