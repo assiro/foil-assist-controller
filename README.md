@@ -138,7 +138,7 @@ foil-assist-controller/
 ## Credits
 
 Designed and developed by **R. & L. Assiro** — TecnoFly  
-Firmware version: 5.36
+Firmware version: 5.49
 
 ---
 
