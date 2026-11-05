@@ -1,10 +1,31 @@
 // EEPROM byte usage:
-// 0-3 = valMax; 4-7 = valMin; 8 = TRUST; 9 = Tx Power; 12-15 = RXmode; 16-19 = THmode; 20-23 = display mode
+// 0-3 = valMax; 4-7 = valMin; 8 = TRUST; 12-15 = RXmode; 20-23 = display mode
+// 9, 16-19 = (free) - ex Tx Power / THmode (fix 18/08/2026)
+//uint maxPower = 100;
+
+// Filtro asimmetrico: discesa immediata (sicurezza), salita smussata con EMA
+#define SMOOTH_UP 0.25
+
+int stabilize_throttle(int raw) {
+      static float stableThrottle = 0;
+      if (raw >= 99) {
+            stableThrottle = 99;
+            return 99;
+      }
+      if (raw <= stableThrottle) {
+            stableThrottle = raw;                                    // discesa immediata
+      } else {
+            stableThrottle += SMOOTH_UP * (raw - stableThrottle);    // salita smussata (EMA)
+      }
+      return (int)(stableThrottle + 0.5);
+}
 
 void read_throttle(){
-      hallValue = analogRead(hallPin);
-      throttle = map(hallValue, valMin, valMax, 0, maxPower);
-      throttle = constrain(throttle, 0, maxPower);
+      long hallSum = 0;
+      for (int i = 0; i < 8; i++) { hallSum += analogRead(hallPin); }  // average 8 values
+      hallValue = hallSum / 8;
+      throttle = map(hallValue, valMin, valMax, 0, 99);
+      throttle = constrain(throttle, 0, 99);
 }
 
 void hallCalibration(){
@@ -88,25 +109,25 @@ void hall_issue(){
 void hallTest(){
       WiFi.mode(WIFI_STA);  // Set device as a Wi-Fi Station
       WiFi.begin(ssidService, passwordService);
-      while (true){ 
+      while (true){
             if(WiFi.status() == WL_CONNECTED) {
                   OTAstart();
                   ArduinoOTA.handle();
-            }  
+            }
             hallValue = analogRead(hallPin);
             do{
-                display.setPartialWindow(0, 0, 200, 200); // Imposta la finestra da aggiornare
+                display.setPartialWindow(0, 0, 200, 200);
                 display.firstPage();
                 display.setTextSize(3);
                 display.setCursor(10,0);
                 display.println("SETUP MODE");
                 display.setTextSize(2);
                 display.setCursor(5,35);
-                display.print("Hall Calibration");                  
+                display.print("Hall Calibration");
                 display.setCursor(80,105);
                 display.print(hallValue);
-              }while (display.nextPage());    
-            delay(500);                  
-      }      
+              }while (display.nextPage());
+            delay(500);
+      }
 }
 

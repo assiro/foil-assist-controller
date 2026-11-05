@@ -1,6 +1,6 @@
 /*
     TecnoFly remote controller for Foil Assist system
-    2025 writed by Roberto Assiro
+    2025 writed by Roberto Assiro and Lorenzo Assiro with the great contribution of UccioBot
     
     This program is free software under the terms of the GNU General Public License 
     as published by the Free Software Foundation.
@@ -14,11 +14,8 @@
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
-#include <U8g2lib.h>
-#include <EEPROM.h>
-#include <DNSServer.h>
-#include <WiFiUdp.h>
 #include <ArduinoOTA.h>
+#include <EEPROM.h>
 #include <ESP32httpUpdate.h>
 #include <Update.h>
 #include <AsyncTCP.h>
@@ -26,9 +23,7 @@
 #include "image.h"
 #define ENABLE_GxEPD2_GFX 1
 #include <GxEPD2_BW.h>
-#include <GxEPD2_3C.h>
 #include <Adafruit_NeoPixel.h>
-
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/semphr.h>
@@ -46,19 +41,20 @@ Adafruit_NeoPixel wsLED(WS_LED_COUNT, WS_LED_PIN, NEO_GRB + NEO_KHZ800);
 GxEPD2_BW<GxEPD2_154_D67, GxEPD2_154_D67::HEIGHT> 
 display(GxEPD2_154_D67(/*CS=*/ 7, /*DC=*/ 1, /*RES=*/ 9, /*BUSY=*/ 10)); // GDEH0154D67 200x200, SSD1681
 
-String VERSION = "5.36";
+String VERSION = "5.49";
 const char* ssidService     = "tecnofly";
 const char* passwordService = "tecnofly";
 
 String upgradeServer = "http://www.eoloonline.it/firmware/foilAssist/";
-String upgradeFile = "foilAssistController5.bin"; 
-#define EEPROM_SIZE 16
+String upgradeFile = "foilAssistController5.bin"; //foilAssistController5.bin
+#define EEPROM_SIZE 32
 bool espState = false;   
 bool firstConnection = false;
 
-uint8_t THmode = 0; // Throttle mode
 uint displayMode; // display view mode
 bool espStatus = false;
+
+unsigned long lastRxTime = 0;   // fix 18/08/2026: istante ultimo pacchetto RX (per vincolo trust)
 
 unsigned long lastTime;  
 const unsigned long transmissionInterval = 100;  // send throttle to receiver in ms
@@ -67,21 +63,31 @@ unsigned long vibrationTimeOff;
 unsigned long vibrationTime = 0; 
 unsigned long timerOff = 0; 
 unsigned long timerNoConnect = 0; 
+unsigned long sleepTicks = 0;      // auto-sleep: tick da 100 ms (espnowTask)
+
 int hallValue;
 int throttle;
-int triggerValue;
+
 int counter;
 bool lowBatt = false;
 bool lock = true;
+bool unlockHolding = false;                // trigger premuto per la procedura di unlock
+bool unlockArmed = false;                  // pressione lunga completata, in attesa di rilascio
+unsigned long unlockHoldStart = 0;         // istante di inizio pressione trigger
+const unsigned long UNLOCK_HOLD_MS = 1800; // pressione lunga (ms) per armare lo sblocco
 uint valMin = 1600;
 uint valMax = 2600;
 uint valMiddle = ((valMax - valMin) / 2) + valMin;
-//uint waveBuffer[10];
-//uint takeOffBuffer[10];
-//uint waveBestTimeBuffer[10];
-int partialCount = 0;
-uint8_t maxPower;  // max power to send by throttle TEST
-uint8_t TxPower;
+
+uint16_t trustWatts = 2200;              // watt VESC (1500-2200) — SOLO RAM (fix 20/08/2026: fonte di verità = VESC/RX, niente EEPROM sul controller)
+bool trustSynced = false;                // fix 20/08/2026: true solo dopo sync col valore reale della board
+//uint8_t  maxPower;                          // percentuale derivata da trustWatts per throttle cap
+volatile bool trustMenuActive = false;      // fix 06/09/2026: true mentre si regola il trust nel menu
+volatile uint32_t trustMenuExitTime = 0;   // fix 06/09/2026: istante uscita menu trust (settle 5s prima di riprendere sync RX)
+
+uint16_t propRpm = 0;   // rpm MECCANICI elica (0 = non impostato) - inviati alla RX
+bool propCw = true;      // true = CW/orario, false = CCW/antiorario
+struct TxPkt { int throttle; uint16_t trustWatts; uint16_t propRpm; uint8_t propCw; };  // ESP-NOW: throttle (4B) + trustWatts (2B)
 uint8_t surfingSeconds;  // timer for seconds in surfing mode (throttle off)
 uint16_t surfingMinutes;
 
@@ -95,7 +101,6 @@ struct vescValues {
 
 struct vescValues data;
 
-long rpm;
 float inpVoltage;  
 float tempMosfet;
 float avgInputCurrent;
@@ -117,10 +122,16 @@ uint takeOff;
 uint wave;
 uint waveBestTime;
 uint rideNumber;
+int score;                    // rider score dalla RX (fix 20/08/2026)
 bool gravityAlarm;
 bool riderAlert;
+bool pumping = false;
+bool boardMoving = false;   // aggiornato da OnDataRecv
 bool vibrationAlarm = false;
 bool justOneAlert;
+uint record;
+bool recordAlertActive = false;   // mostra schermata record sul display
+unsigned long recordAlertTimer = 0;  // fino a quando
 
 uint boardCode;
 uint8_t broadcastAddress[6] = {0x4C, 0x11, 0xAE, 0x0D, 0xE5, 0x35};//RECEIVER MAC ADDRESS
@@ -151,6 +162,11 @@ typedef struct struct_message {
         uint rideNumber;
         bool gravityAlarm;
         bool riderAlert = false;
+        bool pumping = false;
+        bool boardMoving = false;   // dalla RX: tavola in movimento (rms > soglia)
+        uint record;
+        uint16_t trustWatts;   // dalla RX: l_watt_max reale del VESC (sync trust, fix 20/08/2026)
+        int score;             // dalla RX: rider score (fix 20/08/2026) — VIEW 1 dati
         //float watthour;
 } struct_message;
 
@@ -175,96 +191,90 @@ void OnDataSent(const esp_now_send_info_t *info, esp_now_send_status_t status) {
   if (status == 0){
         espStatus = true;
   }else{
-//    Serial.println("ESP_NOW delivery fail...");
         espStatus = false;
   }
 }
 
 void OnDataRecv(const esp_now_recv_info_t *info, const uint8_t *incomingData, int len){    
-      memcpy(&incomingReadings, incomingData, sizeof(incomingReadings));
-      inpVoltage = incomingReadings.a;
-      tempMosfet = incomingReadings.tempMosfet;
-      avgInputCurrent = incomingReadings.avgInputCurrent;
-      watt = incomingReadings.watt;
-      batpercentage = incomingReadings.batt;
-      file = incomingReadings.file+1;    
-      powerCounter = incomingReadings.powerCounter;
-      powerAverage = incomingReadings.powerAverage;
-      powerIndex = incomingReadings.powerIndex;
-      receiverVersion = incomingReadings.receiverVersion;
-      Tminutes = incomingReadings.Tminutes;
-      Tseconds = incomingReadings.Tseconds;      
-      Mminutes = incomingReadings.Mminutes;
-      Mseconds = incomingReadings.Mseconds;    
-      wave = incomingReadings.wave;
-      takeOff = incomingReadings.takeOff;
-      waveBestTime = incomingReadings.waveBestTime;    
-      gravityAlarm = incomingReadings.gravityAlarm;  
-      riderAlert = incomingReadings.riderAlert;      
-//      waveBuffer[incomingReadings.rideNumber] = incomingReadings.wave;
-//      takeOffBuffer[incomingReadings.rideNumber] = incomingReadings.takeOff;
-//      waveBestTimeBuffer[incomingReadings.rideNumber] = incomingReadings.waveBestTime; 
+        memcpy(&incomingReadings, incomingData, sizeof(incomingReadings));
+        inpVoltage = incomingReadings.a;
+        tempMosfet = incomingReadings.tempMosfet;
+        avgInputCurrent = incomingReadings.avgInputCurrent;
+        watt = incomingReadings.watt;
+        batpercentage = incomingReadings.batt;
+        file = incomingReadings.file+1;    
+        powerCounter = incomingReadings.powerCounter;
+        powerAverage = incomingReadings.powerAverage;
+        powerIndex = incomingReadings.powerIndex;
+        receiverVersion = incomingReadings.receiverVersion;
+        Tminutes = incomingReadings.Tminutes;
+        Tseconds = incomingReadings.Tseconds;      
+        Mminutes = incomingReadings.Mminutes;
+        Mseconds = incomingReadings.Mseconds;    
+        wave = incomingReadings.wave;
+        takeOff = incomingReadings.takeOff;
+        waveBestTime = incomingReadings.waveBestTime;    
+        gravityAlarm = incomingReadings.gravityAlarm;  
+        riderAlert = incomingReadings.riderAlert;   
+        pumping = incomingReadings.pumping;
+        boardMoving = incomingReadings.boardMoving;   
+        record = incomingReadings.record;     
+        score = incomingReadings.score;      // rider score (fix 20/08/2026)
+        // Sync trust dalla board (fix 20/08/2026): il controller adotta l_watt_max reale
+        // del VESC. NIENTE EEPROM: la fonte di verità è il VESC (mcconf.bin sulla RX),
+        // sul controller il valore vive solo in RAM.
+        if (!trustMenuActive && (millis() - trustMenuExitTime > 5000) && incomingReadings.trustWatts >= 1500 && incomingReadings.trustWatts <= 2200) {
+            trustWatts = incomingReadings.trustWatts;
+            trustSynced = true;
+        }
+    //      waveBuffer[incomingReadings.rideNumber] = incomingReadings.wave;
+    //      takeOffBuffer[incomingReadings.rideNumber] = incomingReadings.takeOff;
+    //      waveBestTimeBuffer[incomingReadings.rideNumber] = incomingReadings.waveBestTime; 
 
-      firstConnection = true;
+        firstConnection = true;
+        lastRxTime = millis();   // fix 18/08/2026: link attivo (usato da setTrustPower)
   //    if(incomingReadings.rideNumber != 0){Serial.println(incomingReadings.rideNumber);}
   //    Serial.println(receiverVersion);           
  //Serial.println(riderAlert);    
 }
-
 
 ////  MODIFICA 
 // ================== PROTOTYPES ==================
 void espnowTask(void *pvParameters);
 void logicTask(void *pvParameters);
 void displayTask(void *pvParameters);
+void displayTaskReal(void *pvParameters);
+int stabilize_throttle(int raw);
 
 
 void setup() {
     Serial.begin(115200); 
     WiFi.mode(WIFI_STA);    
-
     pinMode(WS_LED_PIN, INPUT);
     wsLED.begin();      // Abilita il controllo WS2812
     wsLED.clear();      // Imposta 0,0,0
     wsLED.show();       // ⚡ Spegne il LED in <1ms
-      
-
     pinMode(LED, OUTPUT);
     pinMode(VIBRATOR, OUTPUT);
     pinMode(CHARGING, INPUT);
     digitalWrite(LED , 0);
     digitalWrite(VIBRATOR , 0);
     analogReadResolution(12);
-    EEPROM.begin(32);
+    EEPROM.begin(EEPROM_SIZE);
 
-
-delay (200);    
-TxPower = EEPROM.read(9);
-if(TxPower > 5){TxPower = 5;}
-Serial.print("Tx Power: "); Serial.println(TxPower);
-
-switch (TxPower) {
-        case 0: WiFi.setTxPower(WIFI_POWER_2dBm); break;
-        case 1: WiFi.setTxPower(WIFI_POWER_5dBm); break;
-        case 2: WiFi.setTxPower(WIFI_POWER_7dBm);break;
-        case 3: WiFi.setTxPower(WIFI_POWER_8_5dBm);break;
-        case 4: WiFi.setTxPower(WIFI_POWER_11dBm); break;
-        case 5: WiFi.setTxPower(WIFI_POWER_15dBm); break;
-}
-//    WiFi.setTxPower(WIFI_POWER_15dBm); // best work for esp32 c3 super mini and zero
-
-//    esp_wifi_set_max_tx_power(80); // ≈ +21 dBm valori: 8 → 84 (unità = 0.25 dBm)
-//    esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);  // fixed channel (es. 1)
-//    esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_LR);  // enable long range
+    delay (200);    
+    WiFi.setTxPower(WIFI_POWER_15dBm);
+    //    esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);  // fixed channel (es. 1)
+    //    esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_LR);  // enable long range
 
     display.init(); 
     macSetting();  
     // Init ESP-NOW
     if (esp_now_init() != 0) {
-        Serial.println("Error initializing ESP-NOW");
+        Serial.println("Error ESP-NOW");
         return;
     }else{
-        Serial.println("ESP-NOW initializing OK!");
+        Serial.println("ESP-NOW OK!");
     }
 
     esp_now_register_send_cb(OnDataSent);
@@ -283,7 +293,6 @@ switch (TxPower) {
 
     // ---------- MUTEX ----------
     dataMutex = xSemaphoreCreateMutex();
-
     startingEpaperDisplay();
     firstInit();
     //hallTest();  // ONLY FOR TEST WITH USB CONNECTED 
@@ -295,35 +304,52 @@ switch (TxPower) {
 
 }
 
-
 void loop() {vTaskDelay(portMAX_DELAY);}
-
 
 // ================== TASK ESP-NOW ==================
 void espnowTask(void *pvParameters) {
     TickType_t lastWake = xTaskGetTickCount();
     for (;;) {
-            if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
-                xSemaphoreGive(dataMutex);
-            }
             read_throttle();
             if (throttle > 10) {
                         timerOff = 0;
                         timerNoConnect = 0;
-                        if(lock){unlock();}
+                        sleepTicks = 0;   // trigger attivo: azzera contatore auto-sleep
+                        if (lock) {
+                              // Procedura di unlock: tieni premuto il trigger per UNLOCK_HOLD_MS,
+                              // vibrazione quando il tempo è raggiunto, poi rilascia per sbloccare
+                              if (!unlockHolding) { unlockHolding = true; unlockHoldStart = millis(); }
+                              if ((millis() - unlockHoldStart >= UNLOCK_HOLD_MS) && !unlockArmed) {
+                                    unlockArmed = true;
+                                    vibrationTime = 300;   // "tempo raggiunto, rilascia il trigger"
+                              }
+                        }
             } else {
+                        if (lock && unlockArmed) {
+                              lock = false;             // sblocco completato
+                              vibrationTime = 800;      // conferma sblocco
+ //                             showGo();
+                        }
+                        unlockHolding = false;          // trigger rilasciato: azzera la procedura
+                        unlockArmed = false;
                         timerOff++;
+                        // AUTO-SLEEP: tavola in movimento (boardMoving dalla RX) = resta sveglio
+                        if (boardMoving) { sleepTicks = 0; } else { sleepTicks++; }
                         surfingSeconds = (timerOff / 10) / 60;
                         surfingMinutes = (timerOff / 10) % 60;
             }
-            switch (THmode) {
-                case 1: throttle = strong_throttle_curve(throttle); break;
-                case 2: throttle = mid_throttle_curve(throttle); break;
-                case 3: throttle = soft_throttle_curve(throttle); break;
-                case 4: throttle = angular_throttle_curve(throttle); break;
-                case 5: throttle = eco_throttle_curve(throttle); break;
-            }
-            esp_now_send(broadcastAddress, (uint8_t *)&throttle, sizeof(throttle));
+            int throttleToSend = throttle;
+            if (lock) { throttleToSend = 0; }  
+            // SMOOTH fisso (fix 18/08/2026): filtro asimmetrico sempre attivo,
+            // rimosse le curve selezionabili (LINEAR/STRONG/SOFT) dal menu
+            throttleToSend = stabilize_throttle(throttleToSend);
+            // Fix 20/08/2026: prima del primo sync con la board invia 0 (la RX lo ignora),
+            // così il controller non sovrascrive il valore reale del VESC.
+            // Dopo il sync invia il valore adottato (identico a quello della board -> nessuna riscrittura).
+            // Niente EEPROM: il trust vive solo in RAM (fonte di verità = VESC/RX).
+
+            TxPkt pkt = { throttleToSend, trustSynced ? trustWatts : 0, propRpm, propCw ? 1 : 0 };   // elica inclusa nel pacchetto
+            esp_now_send(broadcastAddress, (uint8_t *)&pkt, sizeof(pkt));
             vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(transmissionInterval));
         }
 }
@@ -345,7 +371,18 @@ void logicTask(void *pvParameters) {
                         }
                 }
 
-                if((riderAlert) and (displayMode == 3)){vibrationTime = 1500;}   //new time record on surfing or pump by vibration alert
+                if(riderAlert){
+                    vibrationTime = 1500;           // vibrazione lungo in tutti i modi
+                    if(!recordAlertActive){
+                        recordAlertActive = true;   // mostra schermata record
+                        recordAlertTimer = millis() + 5000;  // per 5 secondi
+                    }
+                }
+
+                // Autoscadenza schermata record
+                if(recordAlertActive && millis() > recordAlertTimer){
+                    recordAlertActive = false;
+                }
 
                 vibration();
                 checkCharging();
@@ -357,7 +394,6 @@ void logicTask(void *pvParameters) {
         vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
-
 
 ///////////////////////////////
 //######## FUNCTIONS #########
@@ -398,7 +434,6 @@ void startingEpaperDisplay(){
 
 }
 
-
 void vibration(){
           int timeOn = vibrationTime;
           if ((vibrationTimeOff + vibrationTime + timeOn < millis()) and (vibrationTime > 0)) {
@@ -410,7 +445,6 @@ void vibration(){
           }      
 }
 
-
 void vibration_confirm(int vibrationTime){
       digitalWrite(LED,1);
       digitalWrite(VIBRATOR,1);
@@ -420,12 +454,11 @@ void vibration_confirm(int vibrationTime){
 }
 
 
-
 void macSetting(){
         uint8_t currentMAC[6];
         WiFi.macAddress(currentMAC);
         Serial.println("");
-        Serial.print("MAC originale: ");
+//        Serial.print("MAC originale: ");
         for (int i = 0; i < 6; i++) {
                 if (i > 0) Serial.print(":");
                 Serial.printf("%02X", currentMAC[i]);
@@ -449,15 +482,14 @@ void macSetting(){
         esp_err_t result = esp_wifi_set_mac(WIFI_IF_STA, customMAC);
         
         if (result == ESP_OK) {
-            Serial.println("MAC address cambiato con successo!");
+//            Serial.println("MAC address cambiato con successo!");
             Serial.print("NEW MAC:  ");
             Serial.println(WiFi.macAddress());                
         } else {
-            Serial.print("Errore nel cambiare il MAC address. Codice errore: ");
+//            Serial.print("Errore nel cambiare il MAC address. Codice errore: ");
             Serial.println(result);
         }
 }
-
 
 void checkCharging(){
       if (digitalRead(CHARGING) == HIGH) {
@@ -470,18 +502,5 @@ void checkCharging(){
       }
 }
 
-void unlock(){       
-      bool exit = true;
-      while(exit){
-          digitalWrite(LED,0);  
-          read_throttle();
-          if(throttle < 10) {exit = false;}
-          delay(500);
-          digitalWrite(LED,1);
-      }
-      lock = false;
-      throttle = 0;
-      vibrationTime = 800;  // alert vibration before unlock
-      delay(1000);
-      vibrationTime = 600;
-}
+// Nota: la procedura di unlock ora è gestita direttamente in espnowTask
+// (pressione lunga UNLOCK_HOLD_MS + rilascio, non bloccante).

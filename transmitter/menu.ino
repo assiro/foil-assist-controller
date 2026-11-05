@@ -1,16 +1,18 @@
 // EEPROM byte usage:
-// 0-3 = valMax; 4-7 = valMin; 8 = TRUST; 9 = Tx Power; 12-15 = RXmode; 16-19 = THmode; 20-23 = display mode
+// 0-3 = valMax; 4-7 = valMin; 8 = TRUST (byte, legacy);
+// 10-11 = (LIBERI dal 20/08/2026 — trust NON salvato: fonte di verità = VESC/RX); 12-15 = RXmode;
+// 20-23 = display mode
+// 9, 16-19, 24-27 = (free) — ex Tx Power / THmode (fix 18/08/2026)
 
 void firstInit(){
         EEPROM.get(20, displayMode); // display view mode
-        EEPROM.get(16, THmode); //read throttle curve
-        if(THmode > 10){THmode = 1;}
         EEPROM.get(0, valMax);
         EEPROM.get(4, valMin);
-        maxPower = EEPROM.read(8);
-        if(maxPower < 60 or maxPower > 99){maxPower = 99;}
-        Serial.print("Max Power: "); Serial.println(maxPower);
+        // Fix 20/08/2026: trust NON letto da EEPROM — parte dal default 2200 in RAM
+        // e viene adottato dalla board al primo sync (fonte di verità = VESC/RX)
+ //       maxPower = map(trustWatts, 1500, 2400, 65, 99);
         
+        Serial.print("Max Power: "); Serial.println(trustWatts);
         valMiddle = ((valMax - valMin) / 2) + valMin;
         if(valMax<=valMin or valMax>2800 or valMin>2600 or valMax<1800 or (valMax - valMin) < 100){hallCalibration();}
         hallValue = analogRead(hallPin);
@@ -64,12 +66,15 @@ void firstInit(){
                 display.setTextSize(6);
                 display.setCursor(10,90);
                 display.print(boardCode);  
-
                 display.setTextSize(2);
                 display.setCursor(0,170);
-                display.print("Trust set to ");  
-                display.print(maxPower);  
-                display.print("%");
+                if (trustSynced) {   // fix 20/08/2026: mostra il trust SOLO se connesso alla board
+                    display.print("Max Trust: ");  
+                    display.print(trustWatts);  
+                    display.print("W");
+                }else{
+                    display.print("NO BOARD");
+                }
         }while (display.nextPage());
         delay(2500);
 }
@@ -80,10 +85,9 @@ void menuDesign(){
         const char* menuItems[menuItemsNumber] = {
         "- Pair",
         "- Display",
-        "- Throttle",
         "- Trust",          
+        "- Propeller",
         "- Firmware",                
-//        "- Manual",
         "- Exit"
         };
         int selected = 0; 
@@ -119,11 +123,9 @@ void menuDesign(){
                         switch (selected) {
                                 case 0: scanWiFi(); break;
                                 case 1: DisplayView(); break;
-                                case 2: ThrottleMode();break;
-                                case 3: setTrustPower(); break;                                
-                                case 4: firmwareUpgrade(); break;
-
-        //                        case 4: showQR(); break;
+                                case 2: setTrustPower(); break;                                
+                                case 3: setPropeller(); break;
+                                case 4: firmwareMenu(); break;
                                 case 5: exitMenu = true; break;
                         }
                 }
@@ -209,138 +211,212 @@ void DisplayView(){
         delay(1500);
 }
 
-void ThrottleMode(){
-        check_trigger_off();
-        bool exit = false;
-        int timeCounter = 0;
-        while(exit == false){
+void setTrustPower(){
+        check_trigger_off(); 
+        // Fix 18/08/2026: modificabile SOLO con board collegata. Il valore trust
+        // viene inviato alla RX via ESP-NOW che lo applica al VESC: senza
+        // collegamento controller e VESC si desincronizzerebbero.
+        if (millis() - lastRxTime > 3000) {   // nessun pacchetto RX da 3s
                 display.setPartialWindow(0, 0, 200, 200); 
                 display.firstPage();
                 do {
-                        display.setTextSize(3);
-                        display.setCursor(30,0);
-                        display.println("THROTTLE");
-                        display.setCursor(60,30);
-                        display.println("CURVE");            
-                        display.setCursor(45,70);
-                        display.println("Select");
-                        if(THmode == 0){    
-                        display.setCursor(50,130);
-                        display.print("LINEAR"); 
-                        } else if(THmode == 1){
-                        display.setCursor(50,130);
-                        display.print("STRONG");
-                        } else if(THmode == 2){    
-                        display.setCursor(50,130);
-                        display.print("MIDDLE"); 
-                        } else if(THmode == 3){    
-                        display.setCursor(65,130);
-                        display.print("SOFT"); 
-                        } else if(THmode == 4){    
-                        display.setCursor(45,130);
-                        display.print("ANGULAR"); 
-                        } else if(THmode == 5){    
-                        display.setCursor(70,130);
-                        display.print("ECO"); 
-                        }
+                        display.setTextSize(2);
+                        display.setCursor(45,40);    
+                        display.print("NO BOARD");  
+                        display.setCursor(30,70);
+                        display.print("CONNECTION");  
+                        display.setCursor(20,120);
+                        display.print("TRUST LOCKED!");
                 } while (display.nextPage());
-
-
-                        int triggerState = check_trigger();
-                        if (triggerState == 1) {
-                                THmode++;    
-                                vibration_confirm(30);
-                        } 
-                        else if (triggerState == 2) {// Long press → conferma selezione                   
-                                vibration_confirm(200);
-                                exit = true;
-                        }
-                if (THmode > 5){THmode = 0;}
-                delay(100);
+                vibration_confirm(400);
+                delay(2000);
+                return;
         }
-        EEPROM.put(16, THmode);
-        EEPROM.commit();
-        delay(1500);
-        setTxPower();
-}
-
-
-void setTrustPower(){
-        check_trigger_off(); 
+        trustMenuActive = true;   // fix 06/09/2026: blocca la sync RX durante la regolazione
         bool exit = false;
-        int timeCounter = 0;
         while(exit == false){
                 display.setPartialWindow(0, 0, 200, 200); 
                 display.firstPage();
                 do {
                         display.setTextSize(2);
-                        display.setCursor(20,40);    
-                        display.print("Set max trust");  
-                        display.setCursor(10,60);
-                        display.print("from 65% to 99%");  
+                        display.setCursor(25,40);    
+                        display.print("Set max power");  
+                        display.setCursor(35,60);
+                        display.print("from 1500W");  
+                        display.setCursor(50,80);
+                        display.print("to 2200W");  
                         display.setTextSize(3);
                         display.setCursor(50,3);
                         display.print("Trust");           
-                        display.setCursor(45,100);
+                        display.setCursor(45,110);
                         display.println("Select");   
                         display.setTextSize(6);
-                        display.setCursor(55,150);
-                        display.print(maxPower); 
-                        display.print("%"); 
+                        display.setCursor(15,150);
+                        display.print(trustWatts); 
+                        display.print("W"); 
                 } while (display.nextPage());
                     int triggerState = check_trigger();
                     if (triggerState == 1) {
-                            maxPower = maxPower + 5;    
+                            trustWatts = trustWatts + 100;    
                             vibration_confirm(30);
                     } 
-                    else if (triggerState == 2) {// Long press → conferma selezione                   
+                    else if (triggerState == 2) {                   
                             vibration_confirm(200);
                             exit = true;
                     }
-                if (maxPower == 100){maxPower = 99;}
-                if (maxPower > 99){maxPower = 65;}
+                if (trustWatts > 2200){trustWatts = 1500;}
                 delay(100);
         }
-        EEPROM.write(8, maxPower);
-        EEPROM.commit();
-        delay(1500);
+//        maxPower = map(trustWatts, 1500, 2400, 65, 99);
+        trustMenuActive = false;   // fix 06/09/2026: uscita menu trust
+        trustMenuExitTime = millis();   // fix 06/09/2026: 5s di settle, poi riprende la sync RX
+        trustSynced = true;   // fix 20/08/2026: il valore scelto dall'utente va trasmesso alla board
 
+        // fix 06/09/2026: il menu gira in setup() PRIMA dei task FreeRTOS, quindi espnowTask
+        // NON sta inviando. Trasmette qui il nuovo trust direttamente (piu' tentativi),
+        // cosi' la RX lo applica prima dell'ESP.restart() a fine menu.
+        for (int _i = 0; _i < 10; _i++) {
+            TxPkt _pkt = { 0, (uint16_t)trustWatts };
+            esp_now_send(broadcastAddress, (uint8_t *)&_pkt, sizeof(_pkt));
+            delay(150);
+        }
+        // Fix 20/08/2026: NIENTE EEPROM — il trust lo salva la RX in mcconf.bin quando lo applica al VESC
+//        Serial.printf("Trust: %dW (%d%%)\n", trustWatts, maxPower);
+        delay(1500);
 }
 
-void setTxPower(){
-        check_trigger_off(); 
+// --------------------- PROPELLER (gestione elica) ---------------------
+// Valori in RPM MECCANICI: la RX li converte in ERPM (x coppie polari) e li scrive nel VESC.
+// Preset: TecnoFly = 4300 rpm CW ; Foil Drive = 4300 rpm CCW ; Custom = 2500..5500 step 100 + senso.
+#define PROP_RPM_MIN  2500
+#define PROP_RPM_MAX  5500
+#define PROP_RPM_STEP 100
+#define PROP_RPM_TECNOFLY  4300
+#define PROP_RPM_FOILDRIVE 4300
+
+void sendPropellerToBoard() {
+        // Il menu gira in setup() PRIMA dei task FreeRTOS: invio diretto (come per il trust).
+        for (int i = 0; i < 10; i++) {
+                TxPkt p = { 0, trustSynced ? trustWatts : 0, propRpm, propCw ? 1 : 0 };
+                esp_now_send(broadcastAddress, (uint8_t *)&p, sizeof(p));
+                delay(150);
+        }
+}
+
+void applyPropeller(uint16_t rpm, bool cw) {
+        propRpm = rpm;
+        propCw  = cw;
+        sendPropellerToBoard();
+        vibration_confirm(300);
+}
+
+void propellerCustom() {
+        uint16_t rpm = propRpm ? propRpm : PROP_RPM_TECNOFLY;
+        bool cw = propCw;
         bool exit = false;
-        int timeCounter = 0;
-        while(exit == false){
-                display.setPartialWindow(0, 0, 200, 200); 
+        // Passo 1: RPM (short = +100, long = conferma)
+        while (!exit) {
+                display.setPartialWindow(0, 0, 200, 200);
                 display.firstPage();
                 do {
-                    display.setTextSize(3);
-                    display.setCursor(27,3);
-                    display.println("TX Power");  
-                    display.setCursor(0,45);
-                    display.println("from 0 to 5");                               
-                    display.setCursor(45,90);
-                    display.println("Select");   
-                    display.setTextSize(8);
-                    display.setCursor(80,130);
-                    display.print(TxPower); 
+                        display.setTextSize(3);
+                        display.setCursor(30, 0);
+                        display.print("CUSTOM");
+                        display.setTextSize(2);
+                        display.setCursor(20, 40);
+                        display.print("Set RPM");
+                        display.setTextSize(6);
+                        display.setCursor(35, 90);
+                        display.print(rpm);
+                        display.setTextSize(2);
+                        display.setCursor(0, 170);
+                        display.print("+100 / hold=next");
                 } while (display.nextPage());
-                    int triggerState = check_trigger();
-                    if (triggerState == 1) {
-                            TxPower++;    
-                            vibration_confirm(30);
-                    } 
-                    else if (triggerState == 2) {// Long press → conferma selezione                   
-                            vibration_confirm(200);
-                            exit = true;
-                    }
-                if (TxPower > 5){TxPower = 0;}
+                int t = check_trigger();
+                if (t == 1) { rpm = (rpm >= PROP_RPM_MAX) ? PROP_RPM_MIN : rpm + PROP_RPM_STEP; vibration_confirm(30); }
+                else if (t == 2) { vibration_confirm(200); exit = true; }
                 delay(100);
         }
-        EEPROM.write(9, TxPower);
-        EEPROM.commit();
-        delay(1000);
-        ESP.restart();
+        // Passo 2: senso di rotazione (short = cambia, long = conferma)
+        exit = false;
+        while (!exit) {
+                display.setPartialWindow(0, 0, 200, 200);
+                display.firstPage();
+                do {
+                        display.setTextSize(3);
+                        display.setCursor(30, 0);
+                        display.print("CUSTOM");
+                        display.setTextSize(2);
+                        display.setCursor(20, 40);
+                        display.print("Rotation");
+                        display.setTextSize(8);
+                        display.setCursor(35, 90);
+                        display.print(cw ? "CW" : "CCW");
+                        display.setTextSize(2);
+                        display.setCursor(0, 170);
+                        display.print("toggle / hold=ok");
+                } while (display.nextPage());
+                int t = check_trigger();
+                if (t == 1) { cw = !cw; vibration_confirm(30); }
+                else if (t == 2) { vibration_confirm(200); exit = true; }
+                delay(100);
+        }
+        applyPropeller(rpm, cw);
+        delay(1500);
+}
 
+void setPropeller() {
+        check_trigger_off();
+        // Fix 14/09/2026: come per il Trust, l'elica si regola SOLO con la board collegata.
+        // Senza link ESP-NOW i preset non arrivano al VESC e controller/board si desincronizzano.
+        if (millis() - lastRxTime > 3000) {   // nessun pacchetto RX da 3s
+                display.setPartialWindow(0, 0, 200, 200);
+                display.firstPage();
+                do {
+                        display.setTextSize(2);
+                        display.setCursor(45,40);
+                        display.print("NO BOARD");
+                        display.setCursor(30,70);
+                        display.print("CONNECTION");
+                        display.setCursor(0,120);
+                        display.print("PROPELLER LOCKED!");
+                } while (display.nextPage());
+                vibration_confirm(400);
+                delay(2000);
+                return;
+        }
+        int sel = 0;   // 0 = TecnoFly, 1 = Foil Drive, 2 = Custom
+        bool exit = false;
+        const char* names[3] = { "TecnoFly", "Foil Drive", "Custom" };
+        while (!exit) {
+                display.setPartialWindow(0, 0, 200, 200);
+                display.firstPage();
+                do {
+                        display.setTextSize(3);
+                        display.setCursor(25, 0);
+                        display.print("PROPELLER");
+                        for (int i = 0; i < 3; i++) {
+                                int y = 45 + i * 40;
+                                if (i == sel) { display.fillRect(0, y - 4, 200, 34, GxEPD_BLACK); display.setTextColor(GxEPD_WHITE); }
+                                else { display.setTextColor(GxEPD_BLACK); }
+                                display.setCursor(10, y);
+                                display.print(names[i]);
+                        }
+                        display.setTextColor(GxEPD_BLACK);
+                        display.setTextSize(2);
+                        display.setCursor(0, 175);
+                        if (propRpm) { display.print(propRpm); display.print("rpm "); display.print(propCw ? "CW" : "CCW"); }
+                        else { display.print("not set"); }
+                } while (display.nextPage());
+                int t = check_trigger();
+                if (t == 1) { sel = (sel + 1) % 3; vibration_confirm(30); }
+                else if (t == 2) {
+                        vibration_confirm(200);
+                        if (sel == 2) { propellerCustom(); }
+                        else { applyPropeller(sel == 0 ? PROP_RPM_TECNOFLY : PROP_RPM_FOILDRIVE, sel == 0); }
+                        exit = true;
+                }
+                delay(100);
+        }
+        delay(1000);
 }

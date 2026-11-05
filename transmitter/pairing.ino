@@ -141,31 +141,3 @@ void noBoard(){
     display.nextPage();
     delay(5000);
 }
-
-/*
-void testScan(){
-Serial.println("Initializing WiFi for scanning...");
-  WiFi.mode(WIFI_STA);        // ESP32 in modalità stazione
-  WiFi.disconnect(true);      // Disconnessione forzata da eventuali reti
-
-  delay(1000);                // Attendere che la disconnessione si completi
-
-  Serial.println("Scanning WiFi networks...");
-  int nn = WiFi.scanNetworks();
-
-  if (nn == 0) {
-    Serial.println("No networks found");
-  } else {
-    Serial.println(String(nn) + " networks found");
-    for (int i = 0; i < nn; ++i) {
-      String ssid = WiFi.SSID(i);
-      int rssi = WiFi.RSSI(i);
-      Serial.print("SSID: ");
-      Serial.print(ssid);
-      Serial.print(" | RSSI: ");
-      Serial.print(rssi);
-      Serial.println(" dBm");
-    }
-  }
-}
-*/

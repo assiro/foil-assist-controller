@@ -2,7 +2,15 @@ extern SemaphoreHandle_t dataMutex;
 extern TxData txData;
 
 // ================= TASK DISPLAY =================
+// Wrapper: e' l'unico posto da cui si puo' fare vTaskDelete(NULL) in sicurezza.
+// L'enumerazione di vTaskDelete(NULL) e' per-task, quindi NON e' ereditata
+// dalla funzione chiamata (i .ino vanno in un unico translation unit).
 void displayTask(void *pvParameters) {
+    displayTaskReal(pvParameters);
+    vTaskDelete(NULL);
+}
+
+void displayTaskReal(void *pvParameters) {
     for (;;) {
         TxData snapshot;
         if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
@@ -15,23 +23,38 @@ void displayTask(void *pvParameters) {
 }
 
 // ================= UPDATE DISPLAY =================
-void updateDisplay(const TxData &data) {
+void updateDisplay(const TxData &) {
+      // ── RECORD ALERT: schermata a priorità massima ──
+      if(recordAlertActive && record > 0 && firstConnection){
+            showRecord();
+            return;
+      }
       display.setPartialWindow(0, 0, 200, 200);
       display.firstPage();
-      if(timerOff > 6000){
-            systemOff();       // sleep mode after 5 min no use throttle
-      }else if(((timerOff > 1000) and (firstConnection) and (Tminutes > 0)  and (throttle < 10)) or ((gravityAlarm) and (firstConnection) and (Tminutes > 0)  and (throttle < 10))) {
+      // AUTO-SLEEP (tick da 100 ms incrementati in espnowTask):
+      // - 5 min (3000 tick) se MAI connessi alla ricevente
+      // - 10 min (6000 tick) se connessi ma tavola ferma
+      // - MAI se la tavola è in movimento (boardMoving azzera sleepTicks)
+      unsigned long sleepLimit = firstConnection ? 6000UL : 3000UL;
+      if(sleepTicks > sleepLimit){
+            systemOff();       // auto sleep
+      }else if(((timerOff > 1300) and (firstConnection) and (Tminutes > 0)  and (throttle < 10) and !pumping) or ((gravityAlarm) and (firstConnection) and (Tminutes > 0)  and (throttle < 10))) {
             showData();             
 //      }else if ((timerOff > 450) and (firstConnection) and (inpVoltage > 0)){
 //            showBatt();
       }else{
             do{
-                  if(((gravityAlarm) or (lock)) and (throttle > 10)){
+//                  if(((gravityAlarm) or (lock)) and (throttle > 10)){
+                  if((gravityAlarm) and (lock) and (throttle > 10)){
                         displayBitmap(0, 0, lock_logo, 200, 200);
                         digitalWrite(LED,1);  
                         delay (100);           
                         digitalWrite(LED,0);  
                         delay(200);
+
+                  }else if((firstConnection) and (!gravityAlarm) and (lock) and (throttle > 10)){
+                        showUnlock();
+
                   }else if((firstConnection) and (throttle < 10) and (lock) and (timerOff < 70) and (Tminutes < 5) and (strlen(incomingReadings.message1) > 1) and (strlen(incomingReadings.message2) > 1)){ 
                         display.setTextSize(4);
                         display.setCursor(0,15);
@@ -101,12 +124,27 @@ void updateDisplay(const TxData &data) {
                               display.setTextSize(5);
                               display.setCursor(40,110);
                         }   
-                        // display common data view
+ /*                     // ── PUMP & GLIDE timer overlay (appare in tutti i modi) ──
+                        if(pumping && throttle < 10){
+                              display.setTextSize(4);
+                              display.fillRect(130, 0, 70, 30, GxEPD_WHITE);
+                              display.setCursor(132,5);
+                              display.setTextColor(GxEPD_BLACK);
+                              if(surfingMinutes < 10) display.print("0");
+                              display.print(surfingMinutes);
+                              display.print(":");
+                              if(surfingSeconds < 10) display.print("0");
+                              display.print(surfingSeconds);
+                              display.setTextSize(2);
+                              display.setCursor(155,25);
+                              display.print("PUMP");
+                              display.setTextColor(GxEPD_BLACK);
+                        }
+ */                         // display common data view
                         if (counter > 40){counter = 0;}
                         if (espStatus){
                               timerNoConnect = 0;
                               if (displayMode < 3) {
-  
                                     if(!gravityAlarm){
                                           display.print(String(watt,0));
                                           justOneAlert = true;
@@ -117,7 +155,6 @@ void updateDisplay(const TxData &data) {
                                                 justOneAlert = false;
                                           }
                                     }      
-                                    
                               }
                               display.setTextSize(3);
                               if (counter < 11){                      
@@ -144,7 +181,6 @@ void updateDisplay(const TxData &data) {
                                           display.setCursor(0,150);
                               //            display.print("R.VOTE ");
                               //            display.print(powerIndex);
-
                               display.print("Waves: ");
                               display.print(wave);
                               }
@@ -154,7 +190,7 @@ void updateDisplay(const TxData &data) {
                                           display.print(powerAverage);
                                           display.print("W");
                               }
-                              if ((inpVoltage < 32.7) and (inpVoltage > 0)) {lowBatt = true;} // BATTERY ALARM ACTIVATION
+                              if ((inpVoltage < 32.2) and (inpVoltage > 0)) {lowBatt = true;} // BATTERY ALARM ACTIVATION
                               if ((inpVoltage > 39.5) and (lowBatt)) {  // reset battery allarm
                                     lowBatt = false;
                                     lock = true;
@@ -173,6 +209,7 @@ void updateDisplay(const TxData &data) {
                                     return;
                               }else if(timerNoConnect > 50){
                                     timerOff = timerOff + 10;
+                                    boardMoving = false;   // senza connessione: dati stale, non bloccare lo sleep
                                     firstConnection = false;      
                                     vibrationTime = 0;
                                     return;     
@@ -181,6 +218,34 @@ void updateDisplay(const TxData &data) {
                   }  
             }while (display.nextPage());
       }
+}
+
+void showRecord(){
+            int recMin = record / 60;
+            int recSec = record % 60;
+            do{
+                  display.setPartialWindow(0, 0, 200, 200);
+                  display.firstPage();
+                  display.fillScreen(GxEPD_WHITE);
+                  display.setTextColor(GxEPD_BLACK);
+                  display.setTextSize(3);
+                  display.setCursor(0,0);
+                  display.print("BEST RECORD");
+                  display.drawLine(0, 35, 200, 35, GxEPD_BLACK);
+                  display.setTextSize(6);
+                  display.setCursor(20,55);
+                  if(recMin < 10) display.print("0");
+                  display.print(recMin);
+                  display.print(":");
+                  if(recSec < 10) display.print("0");
+                  display.print(recSec);
+                  display.setTextSize(3);
+                  display.setCursor(20,120);
+                  display.print("PUMP/WAVE");
+                  display.setCursor(15,150);
+                  display.print("BEST TIME");
+                  showBottom();
+            }while(display.nextPage());
 }
 
 
@@ -214,16 +279,15 @@ void showData() {
 
       if (millis() - lastSwitch >= 5000) {
             showView++;
-            if(showView > 2){showView = 0;}
+            if(showView > 3){showView = 0;}
             lastSwitch = millis();
       }
       if (showView == 0) {
             // --- VIEW 1 ---
             do {
                   display.setTextSize(3);
-                  display.setCursor(0,0);
-                  display.print("RIDE N. ");
-                  display.print(file);
+                  display.setCursor(10,0);
+                  display.print("RIDE DATA");//                  display.print(file);
                   display.setCursor(0,30);
                   display.print("T.Time");  
                   display.setCursor(110,30);
@@ -250,8 +314,8 @@ void showData() {
                   display.print("R.VOTE "); 
                   display.print(powerIndex);   
                   display.setCursor(0,180);
-                  display.print("Temp: ");
-                  display.print(tempMosfet, 1);          
+                  display.print("Score: ");
+                  display.print(score);          // rider score dalla RX (fix 20/08/2026)
             } while (display.nextPage());
       } else if(showView == 2) {
             // --- VIEW 2 ---
@@ -259,7 +323,7 @@ void showData() {
             do {
                   display.setTextSize(3);
                   display.setCursor(0,0);
-                  display.print("RIDE N. "); display.println(file);
+                  display.print("RIDE DATA"); //display.println(file);
                   display.setCursor(0,45);
                   display.print("Takeoff:"); display.println(takeOff); 
                   display.setCursor(0,80);
@@ -267,7 +331,7 @@ void showData() {
                   display.setCursor(0,115);
                   display.println("Best time");
                   display.println("on the wave");
-                  display.setCursor(35,170);
+                  display.setCursor(45,170);
                   int waveBestMinutes = waveBestTime / 60;
                   int waveBestSeconds = waveBestTime % 60;
                   if (waveBestMinutes < 10) display.print("0");
@@ -276,8 +340,11 @@ void showData() {
                   if (waveBestSeconds < 10) display.print("0");
                   display.print(waveBestSeconds);
             } while (display.nextPage());
+      } else if(showView == 3) {
+                  // --- VIEW 3 ---
+                  showRecord();
       }else{
-                        // --- VIEW 3 ---
+                  // --- VIEW 4 ---
                   showBatt();
       }
 
@@ -314,14 +381,13 @@ void showBottom(){
           display.drawLine(0, 179, 200, 179, GxEPD_BLACK); 
           display.drawLine(0, 180, 200, 180, GxEPD_BLACK); 
           display.setTextSize(2);
-//          display.setCursor(0,185);
-//          display.print(boardCode, DEC);  // receiver number        
           display.setCursor(0,185);
-          display.print("Ride N.:"); 
-          display.print(file); 
-          display.setCursor(138,185);
+            display.print("Board "); 
+          display.print(boardCode, DEC);  // receiver number        
+//          display.print("Ride N.:"); 
+//          display.print(file); 
+          display.setCursor(145,185);
           display.print(receiverVersion); 
-//display.print(timerOff); 
 }
 
 
@@ -338,7 +404,8 @@ void displayBitmap(int16_t x, int16_t y, const uint8_t *bitmap, int16_t w, int16
 void systemOff(){    
             displayBitmap(0, 0, TecnoFlyLogo, 200, 200); 
             delay(2000);                   
-            display.hibernate();             
+            display.hibernate();      
+            delay(1000);       
             esp_deep_sleep_start();
 }
 
@@ -360,3 +427,38 @@ void showQR(){  // show QR code for the on line manual of the controller
       check_trigger();
 }
 
+void showUnlock(){
+            do{
+                  display.setPartialWindow(0, 0, 200, 200);
+                  display.firstPage();
+                  display.fillScreen(GxEPD_WHITE);
+                  display.setTextColor(GxEPD_BLACK); 
+                  display.setTextSize(4);
+                  display.setCursor(15,15);
+                  display.print("Press 2");
+                  display.setCursor(15,60);
+                  display.print("Seconds");
+                  display.setCursor(75,105);
+                  display.print("to");                  
+                  display.setCursor(30,150);
+                  display.print("UNLOCK");
+            }while(display.nextPage());
+            delay(1000);
+}
+
+void showGo(){
+            do{
+                  display.setPartialWindow(0, 0, 200, 200);
+                  display.firstPage();
+                  display.fillScreen(GxEPD_WHITE);
+                  display.setTextColor(GxEPD_BLACK); 
+                  display.setTextSize(6);
+                  display.setCursor(10,15);
+                  display.print("READY");
+                  display.setCursor(55,75);
+                  display.print("TO");
+                  display.setCursor(50,140);
+                  display.print("GO!");                  
+            }while(display.nextPage());
+            delay(1000);
+}
