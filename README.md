@@ -80,7 +80,7 @@ The ADXL345 accelerometer is optional but provides important safety and analytic
 ## VESC Motor Controller Compatible
 The motor controller used are based on VESC system
 - I used 75100 V2 Makerbase and Flypsky
-- The DQ-DRIVES Classic M (not direct tested yet)
+- The DQ-DRIVES M-Classic (not direct tested yet)
 - 
 ![controllers](images/vesc_controllers.JPG).
 
