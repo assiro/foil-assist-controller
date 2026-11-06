@@ -134,6 +134,8 @@ foil-assist-controller/
 
 ## Getting Started
 
+![foil assist](images/system1.JPG).
+
 1. **Hardware:** Assemble the transmitter and receiver circuits according to the schematics above.
 2. **Pair devices:** Flash both firmwares and update the MAC address of the receiver in the transmitter firmware.
 3. **VESC configuration:** Connect the receiver to the VESC 75100 via UART (RX/TX) and PPM.
