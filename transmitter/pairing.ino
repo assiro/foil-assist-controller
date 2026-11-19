@@ -71,73 +71,109 @@ void scanWiFi() {
     display.setCursor(80, 100);
     display.nextPage();
 
-    Serial.println("Initializing WiFi for scanning...");
-    WiFi.mode(WIFI_STA);        // ESP32 in modalità stazione
-    WiFi.disconnect(true);      // Disconnessione forzata da eventuali reti
-    delay(1000);                // Attendere che la disconnessione si completi
+//    Serial.println("Initializing WiFi for scanning...");
+    WiFi.mode(WIFI_STA);
+    WiFi.disconnect(true);
+    delay(1000);
     int n = WiFi.scanNetworks();
-    Serial.println("Scanning WiFi...");
-    if (n == 0) {
-        Serial.println("No network found.");
+//    Serial.println("Scanning WiFi...");
+    if (n <= 0) {
+        WiFi.scanDelete();
         noBoard();
-    }else{
-        Serial.println(String(n) + " networks found");
- 
-        // Find the strongest "TecnoFly " network
-        String bestSSID = "";
-        int bestRSSI = -1000;  // Initialize to a very low RSSI
-        for (int i = 0; i < n; ++i) {
-            String ssid = WiFi.SSID(i);
-            int rssi = WiFi.RSSI(i);
-            Serial.print("Wifi ");
-            Serial.print(ssid);
-            Serial.print(": ");
-            Serial.print(rssi);
-            Serial.println(" dBm");
-            if (ssid.startsWith("TecnoFly ")) {
-                if (rssi > bestRSSI) {
-                    bestRSSI = rssi;
-                    bestSSID = ssid;
-                }
+        return;
+    }
+
+    String bestSSID;
+    uint16_t bestBoardCode = 0;
+    int bestRSSI = -1000;
+    const char prefix[] = "TecnoFly ";
+    for (int i = 0; i < n; ++i) {
+        String ssid = WiFi.SSID(i);
+        int rssi = WiFi.RSSI(i);
+        Serial.printf("WiFi %s: %d dBm\n", ssid.c_str(), rssi);
+        if (!ssid.startsWith(prefix)) continue;
+
+        String codeStr = ssid.substring(sizeof(prefix) - 1);
+        if (codeStr.length() == 0) continue;
+        uint32_t parsed = 0;
+        bool valid = true;
+        for (size_t j = 0; j < codeStr.length(); ++j) {
+            char c = codeStr.charAt(j);
+            if (c < '0' || c > '9') {
+                valid = false;
+                break;
+            }
+            parsed = parsed * 10U + (uint32_t)(c - '0');
+            if (parsed > 65535U) {
+                valid = false;
+                break;
             }
         }
-        if (bestSSID.length() == 0) {
-            noBoard();
-        }else{
-            // Extract code substring (after "TecnoFly ")
-            String codeStr = bestSSID.substring(9);
-            Serial.print("Code found: ");
-            Serial.println(codeStr);
-
-            uint16_t numberValue = (uint16_t) codeStr.toInt();  
-            Serial.print("HEX: 0x");
-            Serial.println(numberValue, HEX);
-
-            // Store in EEPROM (LSB at address 13, MSB at 14)
-            EEPROM.write(13, numberValue & 0xFF);
-            EEPROM.write(14, (numberValue >> 8) & 0xFF);
-            EEPROM.commit();
-
-        // Update display and restart
-            display.setTextSize(3);
-            display.setCursor(0, 120);
-            display.println("FOUND BOARD:");
-            display.setCursor(0, 150);
-            display.print(codeStr);
-            display.print(" ..OK");
-            vibration_confirm(300);
-            display.nextPage();
-            delay(5000);
-            ESP.restart();
+        if (!valid) {
+            Serial.printf("Ignoring invalid board code in SSID: %s\n", ssid.c_str());
+            continue;
+        }
+        if (rssi > bestRSSI) {
+            bestRSSI = rssi;
+            bestSSID = ssid;
+            bestBoardCode = (uint16_t)parsed;
         }
     }
+    WiFi.scanDelete();
+
+    if (bestSSID.length() == 0) {
+        noBoard();
+        return;
+    }
+
+    String codeStr = bestSSID.substring(sizeof(prefix) - 1);
+    Serial.printf("Valid board code: %s (0x%04X)\n", codeStr.c_str(), bestBoardCode);
+    EEPROM.write(13, bestBoardCode & 0xFF);
+    EEPROM.write(14, (bestBoardCode >> 8) & 0xFF);
+    if (!EEPROM.commit()) {
+        Serial.println("EEPROM commit failed; pairing was not saved.");
+        display.setPartialWindow(0, 0, 200, 200);
+        display.firstPage();
+        do {
+            display.fillScreen(GxEPD_WHITE);
+            display.setTextSize(3);
+            display.setCursor(10, 35);
+            display.println("PAIR SAVE");
+            display.setCursor(35, 75);
+            display.println("FAILED");
+        } while (display.nextPage());
+        vibration_confirm(500);
+        delay(3000);
+        return;
+    }
+
+    display.setPartialWindow(0, 0, 200, 200);
+    display.firstPage();
+    do {
+        display.fillScreen(GxEPD_WHITE);
+        display.setTextSize(3);
+        display.setCursor(0, 60);
+        display.println("FOUND BOARD");
+        display.setCursor(45, 90);
+        display.print(codeStr);
+        display.setCursor(35, 130);
+        display.print("OK done!");
+    } while (display.nextPage());
+    vibration_confirm(300);
+    delay(3000);
+    ESP.restart();
 }
 
+
 void noBoard(){
-    display.setTextSize(4);
-    display.setCursor(0, 130);
-    display.println("NO BOARD");
-    display.println("FOUND");
-    display.nextPage();
+    display.setPartialWindow(0, 0, 200, 200);
+    display.firstPage();
+    do {
+        display.fillScreen(GxEPD_WHITE);
+        display.setTextSize(4);
+        display.setCursor(0, 70);
+        display.println("NO BOARD");
+        display.println("FOUND");
+    } while (display.nextPage());
     delay(5000);
 }

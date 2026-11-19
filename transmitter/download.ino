@@ -1,6 +1,6 @@
 // OTA upgrade module
 
-void firmwareUpgrade(){
+void firmwareUpgrade(bool triggerBoard){
             check_trigger_off();
             display.setPartialWindow(0, 0, 200, 200); 
             display.firstPage();
@@ -13,12 +13,17 @@ void firmwareUpgrade(){
                   display.println("Upgrade"); 
             } while (display.nextPage());
 
-            throttle = 200; // SETUP COMMAND by throttle
-            for (int i = 0; i <= 20; i++) {      
-                  esp_now_send(broadcastAddress, (uint8_t *) &throttle, sizeof(throttle));// Send data via ESP-NOW
-                  delay(100);
+            // Il trigger alla board si invia SOLO se richiesto: aggiornare il
+            // solo controller non deve mandare in setup la ricevente.
+            if (triggerBoard) {
+                  throttle = 200; // SETUP COMMAND by throttle
+                  for (int i = 0; i <= 20; i++) {
+                        esp_now_send(broadcastAddress, (uint8_t *) &throttle, sizeof(throttle));// Send data via ESP-NOW
+                        delay(100);
+                  }
+                  throttle = 0;
+                  delay(500);
             }
-            delay(500);
 
             esp_now_deinit();
             delay(50);
@@ -94,60 +99,75 @@ void firmwareUpgrade(){
 }
 
 
-boolean checkUpgrade(){
+bool checkUpgrade() {
       Serial.println("Check for upgrade...");
-      delay(400);
       display.setPartialWindow(0, 0, 200, 200);
       display.firstPage();
-      do{
+      do {
             display.setTextColor(GxEPD_BLACK);
             display.setTextSize(2);
-            display.setCursor(0,130);
+            display.setCursor(0, 130);
             display.print("Check Upgrade");
-      }while (display.nextPage());
-      String payload;
+      } while (display.nextPage());
+
       WiFiClient client;
       HTTPClient http;
+      http.setConnectTimeout(10000);
+      http.setTimeout(5000);
       String serverPath = upgradeServer + "foilAssistUpgrade.php?T=C&V=" + VERSION;
       Serial.println(serverPath);
-
-      http.begin(client, serverPath.c_str());
-      int httpResponseCode = http.GET();
-      if (httpResponseCode>0) {
-            Serial.print("HTTP Response code: ");
-            Serial.println(httpResponseCode);
-            payload = http.getString();
-            Serial.println(payload);
-      }
-      else {
-            Serial.print("Error code: ");
-            Serial.println(httpResponseCode);
-      }
-      http.end();
-      if(payload == "true"){
-            display.setPartialWindow(0, 0, 200, 200);
-            display.firstPage();
-            do{
-                  display.setTextColor(GxEPD_BLACK);
-                  display.setTextSize(2);
-                  display.setCursor(0,150);
-                  display.println("Upgrade found");
-                  display.println("PLEASE WAIT");
-            }while(display.nextPage());
-            performOTA();
-
-      }else{
-            display.setPartialWindow(0, 0, 200, 200);
-            display.firstPage();
-            do{
-                  display.setTextColor(GxEPD_BLACK);
-                  display.setTextSize(2);
-                  display.setCursor(0,150);
-                  display.println("NO NEW UPGRADE");
-                  display.println("CLICK TRIGGER");
-            }while(display.nextPage());
+      if (!http.begin(client, serverPath)) {
+            Serial.println("Unable to start upgrade check.");
             return false;
       }
+      int httpResponseCode = http.GET();
+      if (httpResponseCode != HTTP_CODE_OK) {
+            Serial.printf("Upgrade check failed: HTTP %d\n", httpResponseCode);
+            http.end();
+            return false;
+      }
+      String payload = http.getString();
+      payload.trim();
+      http.end();
+
+      if (payload != "true") {
+            display.setPartialWindow(0, 0, 200, 200);
+            display.firstPage();
+            do {
+                  display.setTextColor(GxEPD_BLACK);
+                  display.setTextSize(2);
+                  display.setCursor(0, 150);
+                  display.println("NO NEW UPGRADE");
+                  display.println("CLICK TRIGGER");
+            } while (display.nextPage());
+            return false;
+      }
+
+      display.setPartialWindow(0, 0, 200, 200);
+      display.firstPage();
+      do {
+            display.setTextColor(GxEPD_BLACK);
+            display.setTextSize(2);
+            display.setCursor(0, 150);
+            display.println("Upgrade found");
+            display.println("PLEASE WAIT");
+      } while (display.nextPage());
+      bool updated = performOTA();
+      if (!updated) {
+            display.setPartialWindow(0, 0, 200, 200);
+            display.firstPage();
+            do {
+                  display.fillScreen(GxEPD_WHITE);
+                  display.setTextColor(GxEPD_BLACK);
+                  display.setTextSize(3);
+                  display.setCursor(35, 55);
+                  display.println("UPDATE");
+                  display.setCursor(35, 95);
+                  display.println("FAILED");
+            } while (display.nextPage());
+            delay(3000);
+      }
+      return updated;
 }
 
 
@@ -191,9 +211,11 @@ void OTAstart(){
               display.drawRect(10, 150, 182, 40, GxEPD_BLACK);
               display.setTextSize(3);
               display.setCursor(75,100);
-              display.print(progress / (total / 100));
+              unsigned int percent = (total > 0) ? (unsigned int)(((uint64_t)progress * 100U) / total) : 0;
+              if (percent > 100) percent = 100;
+              display.print(percent);
               display.print("%");
-              display.fillRect(10, 150, (progress * 182) / total, 40, GxEPD_BLACK);
+              display.fillRect(10, 150, (percent * 182U) / 100U, 40, GxEPD_BLACK);
           } while (display.nextPage());
       });
       ArduinoOTA.onError([](ota_error_t error) {
@@ -212,25 +234,30 @@ void OTAstart(){
 
 bool performOTA() {
       WiFiClient client;
+      client.setTimeout(5000);
       HTTPClient http;
       http.setConnectTimeout(15000);
-      http.begin(client, upgradeServer + upgradeFile);
+      http.setTimeout(5000);
+      String firmwareUrl = upgradeServer + upgradeFile;
+      if (!http.begin(client, firmwareUrl)) {
+            Serial.println("[OTA] Unable to start HTTP request.");
+            return false;
+      }
       int httpCode = http.GET();
       if (httpCode != HTTP_CODE_OK) {
-            Serial.printf("[OTA] Errore HTTP: %d -> %s\n", httpCode, http.errorToString(httpCode).c_str());
+            Serial.printf("[OTA] HTTP error %d: %s\n", httpCode, http.errorToString(httpCode).c_str());
             http.end();
             return false;
       }
 
       int contentLength = http.getSize();
       if (contentLength <= 0) {
-            Serial.println("[OTA] Errore: dimensione file non valida.");
+            Serial.printf("[OTA] Invalid firmware size: %d\n", contentLength);
             http.end();
             return false;
       }
-
-      if (!Update.begin(contentLength)) {
-            Serial.println("[OTA] Error update initialization");
+      if (!Update.begin((size_t)contentLength)) {
+            Serial.printf("[OTA] Update initialization failed: %s\n", Update.errorString());
             http.end();
             return false;
       }
@@ -238,51 +265,63 @@ bool performOTA() {
       WiFiClient *stream = http.getStreamPtr();
       uint8_t buff[512];
       size_t written = 0;
-      unsigned long lastProgressPrint = millis();
+      unsigned long lastDataAt = millis();
+      unsigned long lastProgressAt = 0;
+      const unsigned long idleTimeoutMs = 15000;
+      Serial.printf("[OTA] Downloading %d bytes...\n", contentLength);
 
-      Serial.println("[OTA] Download is running...");
-
-      while (http.connected() && (written < (size_t)contentLength || contentLength == -1)) {
-      size_t available = stream->available();
-      if (available) {
-            int len = stream->readBytes(buff, ((available > sizeof(buff)) ? sizeof(buff) : available));
-            size_t writtenNow = Update.write(buff, len);
-            if (writtenNow != len) {
-                Serial.println("[OTA] Write error!");
-                Update.abort();
-                http.end();
-                return false;
+      while (written < (size_t)contentLength) {
+            int available = stream->available();
+            if (available > 0) {
+                  size_t toRead = (size_t)available;
+                  if (toRead > sizeof(buff)) toRead = sizeof(buff);
+                  size_t remaining = (size_t)contentLength - written;
+                  if (toRead > remaining) toRead = remaining;
+                  size_t received = stream->readBytes(buff, toRead);
+                  if (received == 0) {
+                        if (millis() - lastDataAt >= idleTimeoutMs) break;
+                        delay(10);
+                        continue;
+                  }
+                  size_t stored = Update.write(buff, received);
+                  if (stored != received) {
+                        Serial.println("[OTA] Flash write failed.");
+                        Update.abort();
+                        http.end();
+                        return false;
+                  }
+                  written += stored;
+                  lastDataAt = millis();
+            } else {
+                  if (!http.connected() || millis() - lastDataAt >= idleTimeoutMs) break;
+                  delay(10);
             }
-            written += writtenNow;
+
+            if (millis() - lastProgressAt >= 3000) {
+                  int percent = (int)(((uint64_t)written * 100U) / (uint64_t)contentLength);
+                  Serial.printf("[OTA] Progress: %d%%\n", percent);
+                  update_progress(percent);
+                  lastProgressAt = millis();
+            }
       }
 
-      if (millis() - lastProgressPrint >= 3000) {
-            float progress = (float)written / (float)contentLength * 100.0;
-            Serial.printf("[OTA] Status: %.1f%% \n", progress);
-            lastProgressPrint = millis();
-            update_progress(progress);
-      }
-
-      delay(10);
-      }
-
-      if (Update.end()) {
-      if (Update.isFinished()) {
-            Serial.println("\n[OTA] Upgrade done... reboot");
-            http.end();
-            delay(2000);
-            ESP.restart();
-            return true;
-      } else {
-            Serial.println("[OTA] Error: Upgrade not complete.");
+      if (written != (size_t)contentLength) {
+ //           Serial.printf("[OTA] Incomplete download: %u/%d bytes.\n", (unsigned)written, contentLength);
+            Update.abort();
             http.end();
             return false;
       }
-      } else {
-      Serial.printf("[OTA] Error Update.end(): %s\n", Update.errorString());
+
       http.end();
-      return false;
+      if (!Update.end() || !Update.isFinished()) {
+            Serial.printf("[OTA] Finalization failed: %s\n", Update.errorString());
+            Update.abort();
+            return false;
       }
+      Serial.println("[OTA] Upgrade done; rebooting.");
+      delay(1500);
+      ESP.restart();
+      return true;
 }
 
 
@@ -290,12 +329,58 @@ bool performOTA() {
 // OTA LOCALE — SOTTOMENU FIRMWARE
 // ============================================================
 
-void firmwareMenu(){
+void boardUpdateTrigger(){
+      check_trigger_off();
+      display.setPartialWindow(0, 0, 200, 200);
+      display.firstPage();
+      do {
+            display.setTextColor(GxEPD_BLACK);
+            display.setTextSize(3);
+            display.setCursor(25, 25);
+            display.println("BOARD");
+            display.setCursor(25, 60);
+            display.println("UPDATE");
+            display.setTextSize(2);
+            display.setCursor(10, 130);
+            display.println("sending trigger");
+      } while (display.nextPage());
+
+      // Livello 200 sul canale throttle: la ricevente lo riconosce come
+      // "predisponiti per l'aggiornamento" e riavvia in setup mode.
+      throttle = 200;
+      for (int i = 0; i < 20; i++) {
+            esp_now_send(broadcastAddress, (uint8_t *) &throttle, sizeof(throttle));
+            delay(100);
+      }
+      // Fondamentale: senza questo il controller continuerebbe a comandare
+      // 200 in ogni pacchetto e la ricevente resterebbe in setup.
+      throttle = 0;
+      delay(300);
+
+      display.setPartialWindow(0, 0, 200, 200);
+      display.firstPage();
+      do {
+            display.setTextColor(GxEPD_BLACK);
+            display.setTextSize(3);
+            display.setCursor(20, 30);
+            display.println("BOARD");
+            display.setCursor(20, 70);
+            display.println("ARMED");
+            display.setTextSize(2);
+            display.setCursor(10, 145);
+            display.println("release = exit");
+      } while (display.nextPage());
+      vibration_confirm(400);
+      delay(2000);
+}
+
+// Aggiornamento del SOLO controller: nessun comando alla board.
+void firmwareControllerMenu(){
       check_trigger_off();
       const int items = 2;
       const char* opts[items] = {
-            "Update by OTAIDE",
-            "Update by Server"
+            "Update by Server",
+            "Update by OTAIDE"
       };
       int sel = 0;
       bool exit = false;
@@ -303,9 +388,10 @@ void firmwareMenu(){
             display.setPartialWindow(0, 0, 200, 200);
             display.firstPage();
             do {
-                  display.setTextSize(3);
+                  display.setTextColor(GxEPD_BLACK);
+                  display.setTextSize(2);
                   display.setCursor(0, 0);
-                  display.println("SELECT TYPE");
+                  display.println("CONTROLLER");
                   for(int i=0; i<items; i++){
                         int y = 50 + i*60;
                         if(i==sel){
@@ -328,21 +414,61 @@ void firmwareMenu(){
                   exit = true;
             }
       }
-      
       switch(sel){
-            case 0: otaIDEmode(); break;
-            case 1: firmwareUpgrade(); break;
+            case 0: firmwareUpgrade(false); break;   // niente trigger alla board
+            case 1: otaIDEmode(); break;
       }
 }
 
+void firmwareMenu(){
+      check_trigger_off();
+      const int items = 3;
+      const char* opts[items] = {
+            "Controller",
+            "Board",
+            "Back"
+      };
+      int sel = 0;
+      bool exit = false;
+      while(!exit){
+            display.setPartialWindow(0, 0, 200, 200);
+            display.firstPage();
+            do {
+                  display.setTextColor(GxEPD_BLACK);
+                  display.setTextSize(3);
+                  display.setCursor(0, 0);
+                  display.println("FIRMWARE");
+                  for(int i=0; i<items; i++){
+                        int y = 45 + i*50;
+                        if(i==sel){
+                              display.fillRect(0, y-3, 200, 44, GxEPD_BLACK);
+                              display.setTextColor(GxEPD_WHITE);
+                        } else {
+                              display.setTextColor(GxEPD_BLACK);
+                        }
+                        display.setTextSize(3);
+                        display.setCursor(5, y+6);
+                        display.print(opts[i]);
+                  }
+            } while(display.nextPage());
+            int t = check_trigger();
+            if(t==1){
+                  sel = (sel+1)%items;
+                  vibration_confirm(30);
+            } else if(t==2){
+                  vibration_confirm(200);
+                  if(sel==0){ firmwareControllerMenu(); }
+                  else if(sel==1){ boardUpdateTrigger(); }
+                  else { exit = true; }
+            }
+      }
+}
 
 // ============================================================
 // OTA IDE — ArduinoOTA puro
 // ============================================================
 void otaIDEmode(){
       check_trigger_off();
-      
-      // Connetti a WiFi
       display.setPartialWindow(0, 0, 200, 200);
       display.firstPage();
       do{
@@ -420,32 +546,22 @@ void otaIDEmode(){
             display.print(hostname);
             display.setCursor(5,75);
             display.println("IP:");
-            display.setCursor(5,95);
+ //           display.setCursor(5,95);
             display.print(ipStr);
             display.setTextSize(2);
             display.setCursor(5,150);
             display.print("Timeout: ");
-            display.print("120s");
+            display.print("5 min");
       } while(display.nextPage());
       
-      // Attendi 120 secondi
-      unsigned long timeout = millis() + 120000;
+      // Attendi 5 minuti
+      unsigned long timeout = millis() + 300000;
       while(millis() < timeout){
             ArduinoOTA.handle();
             delay(10);
             // Se arriva OTA, handle() fa il lavoro e restart
       }
-      
-      display.setPartialWindow(0, 0, 200, 200);
-      display.firstPage();
-      do{
-            display.setTextSize(2);
-            display.setCursor(20,70);
-            display.println("TIMEOUT");
-            display.setCursor(5,100);
-            display.println("No upload");
-      } while(display.nextPage());
-      delay(2000);
+
 }
 
 

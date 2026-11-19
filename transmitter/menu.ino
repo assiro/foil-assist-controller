@@ -123,7 +123,7 @@ void menuDesign(){
                         switch (selected) {
                                 case 0: scanWiFi(); break;
                                 case 1: DisplayView(); break;
-                                case 2: setTrustPower(); break;                                
+                                case 2: powerMenu(); break;                                
                                 case 3: setPropeller(); break;
                                 case 4: firmwareMenu(); break;
                                 case 5: exitMenu = true; break;
@@ -211,6 +211,120 @@ void DisplayView(){
         delay(1500);
 }
 
+// --------------------- POWER SUBMENU ---------------------
+// Sotto "Power": i watt massimi (storico menu Trust) e la configurazione motore.
+void powerMenu(){
+        int selected = 0;
+        bool exit = false;
+        const char* items[3] = { "Power", "Motor type", "Back" };
+        const char* notes[3] = { "max watts (trust)", "BLDC / FOC", "Exit" };
+        while (!exit) {
+                display.setPartialWindow(0, 0, 200, 200);
+                display.firstPage();
+                do {
+                        display.setTextColor(GxEPD_BLACK);
+                        display.setTextSize(3);
+                        display.setCursor(50, 0);
+                        display.print("TRUST");
+                        for (int i = 0; i < 3; i++) {
+                                int y = 55 + i * 45;
+                                if (i == selected) { display.fillRect(0, y - 4, 200, 40, GxEPD_BLACK); display.setTextColor(GxEPD_WHITE); }
+                                else { display.setTextColor(GxEPD_BLACK); }
+                                display.setTextSize(3);
+                                display.setCursor(12, y);
+                                display.print(items[i]);
+                                if (notes[i][0]) {
+                                        display.setTextSize(1);
+                                        display.setCursor(12, y + 24);
+                                        display.print(notes[i]);
+                                }
+                        }
+                        display.setTextColor(GxEPD_BLACK);
+                } while (display.nextPage());
+                int t = check_trigger();
+                if (t == 1) { selected = (selected + 1) % 3; vibration_confirm(30); }
+                else if (t == 2) {
+                        vibration_confirm(200);
+                        if (selected == 0) { setTrustPower(); }
+                        else if (selected == 1) { setMotorConfig(); }
+                        else { exit = true; }
+                }
+                delay(100);
+        }
+        delay(600);
+}
+
+// --------------------- MOTOR CONFIG (BLDC / FOC) ---------------------
+// La ricevente seleziona mcconf.bin (BLDC) o focconf.bin (FOC) e scrive quel
+// file nel VESC; il cambio viene registrato nel log eventi della ricevente.
+void sendMotorCfgToBoard() {
+        motorCfgSynced = true;   // scelta esplicita: da ora il controller la sostiene
+        for (int i = 0; i < 10; i++) {
+                TxPkt p = { 0, trustSynced ? trustWatts : 0, propRpm, propCw ? 1 : 0,
+                            heartRate, hrValid ? 1 : 0,
+                            motorCfgSel ? MOTORCFG_FOC : MOTORCFG_BLDC };
+                esp_now_send(broadcastAddress, (uint8_t *)&p, sizeof(p));
+                delay(150);
+        }
+}
+
+void setMotorConfig() {
+        check_trigger_off();
+        if (millis() - lastRxTime > 3000) {
+                display.setPartialWindow(0, 0, 200, 200);
+                display.firstPage();
+                do {
+                        display.setTextSize(2);
+                        display.setCursor(45, 40);
+                        display.print("NO BOARD");
+                        display.setCursor(30, 70);
+                        display.print("CONNECTION");
+                        display.setCursor(10, 120);
+                        display.print("MOTOR LOCKED");
+                } while (display.nextPage());
+                vibration_confirm(400);
+                delay(2000);
+                return;
+        }
+        motorMenuActive = true;
+        int sel = motorCfgSel ? 1 : 0;
+        bool exit = false;
+        const char* names[2] = { "BLDC", "FOC" };
+        while (!exit) {
+                display.setPartialWindow(0, 0, 200, 200);
+                display.firstPage();
+                do {
+                        display.setTextColor(GxEPD_BLACK);
+                        display.setTextSize(2);
+                        display.setCursor(60, 0);
+                        display.print("MOTOR");
+                        for (int i = 0; i < 2; i++) {
+                                int y = 50 + i * 60;
+                                if (i == sel) { display.fillRect(0, y - 5, 200, 50, GxEPD_BLACK); display.setTextColor(GxEPD_WHITE); }
+                                else { display.setTextColor(GxEPD_BLACK); }
+                                display.setTextSize(4);
+                                display.setCursor(12, y);
+                                display.print(names[i]);
+                                display.setTextSize(1);
+                                display.setCursor(12, y + 32);
+                                display.print(i == 0 ? "mcconf.bin" : "focconf.bin");
+                        }
+                        display.setTextColor(GxEPD_BLACK);
+                        display.setTextSize(1);
+                        display.setCursor(0, 186);
+                        display.print("tap=change hold=apply");
+                } while (display.nextPage());
+                int t = check_trigger();
+                if (t == 1) { sel = (sel + 1) % 2; vibration_confirm(30); }
+                else if (t == 2) { vibration_confirm(200); exit = true; }
+                delay(100);
+        }
+        motorCfgSel = (uint8_t)sel;
+        sendMotorCfgToBoard();
+        motorMenuActive = false;
+        delay(1500);
+}
+
 void setTrustPower(){
         check_trigger_off(); 
         // Fix 18/08/2026: modificabile SOLO con board collegata. Il valore trust
@@ -247,7 +361,7 @@ void setTrustPower(){
                         display.print("to 2200W");  
                         display.setTextSize(3);
                         display.setCursor(50,3);
-                        display.print("Trust");           
+                        display.print("POWER");           
                         display.setCursor(45,110);
                         display.println("Select");   
                         display.setTextSize(6);
@@ -276,7 +390,7 @@ void setTrustPower(){
         // NON sta inviando. Trasmette qui il nuovo trust direttamente (piu' tentativi),
         // cosi' la RX lo applica prima dell'ESP.restart() a fine menu.
         for (int _i = 0; _i < 10; _i++) {
-            TxPkt _pkt = { 0, (uint16_t)trustWatts };
+            TxPkt _pkt = { 0, (uint16_t)trustWatts, propRpm, propCw ? 1 : 0, heartRate, hrValid ? 1 : 0, motorCfgSel ? MOTORCFG_FOC : MOTORCFG_BLDC };
             esp_now_send(broadcastAddress, (uint8_t *)&_pkt, sizeof(_pkt));
             delay(150);
         }
@@ -287,17 +401,17 @@ void setTrustPower(){
 
 // --------------------- PROPELLER (gestione elica) ---------------------
 // Valori in RPM MECCANICI: la RX li converte in ERPM (x coppie polari) e li scrive nel VESC.
-// Preset: TecnoFly = 4300 rpm CW ; Foil Drive = 4300 rpm CCW ; Custom = 2500..5500 step 100 + senso.
+// Preset: TecnoFly = 4000 rpm CW ; Foil Drive = 4200 rpm CCW ; Custom = 2500..4500 step 100 + senso.
 #define PROP_RPM_MIN  2500
-#define PROP_RPM_MAX  5500
+#define PROP_RPM_MAX  4500
 #define PROP_RPM_STEP 100
-#define PROP_RPM_TECNOFLY  4300
-#define PROP_RPM_FOILDRIVE 4300
+#define PROP_RPM_TECNOFLY  4000
+#define PROP_RPM_FOILDRIVE 4200
 
 void sendPropellerToBoard() {
         // Il menu gira in setup() PRIMA dei task FreeRTOS: invio diretto (come per il trust).
         for (int i = 0; i < 10; i++) {
-                TxPkt p = { 0, trustSynced ? trustWatts : 0, propRpm, propCw ? 1 : 0 };
+                TxPkt p = { 0, trustSynced ? trustWatts : 0, propRpm, propCw ? 1 : 0, heartRate, hrValid ? 1 : 0, motorCfgSel ? MOTORCFG_FOC : MOTORCFG_BLDC };
                 esp_now_send(broadcastAddress, (uint8_t *)&p, sizeof(p));
                 delay(150);
         }
@@ -379,7 +493,7 @@ void setPropeller() {
                         display.setCursor(30,70);
                         display.print("CONNECTION");
                         display.setCursor(0,120);
-                        display.print("PROPELLER LOCKED!");
+                        display.print("PROPELLER LOCKED");
                 } while (display.nextPage());
                 vibration_confirm(400);
                 delay(2000);

@@ -13,7 +13,7 @@ void displayTask(void *pvParameters) {
 void displayTaskReal(void *pvParameters) {
     for (;;) {
         TxData snapshot;
-        if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
+        if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100))) {
             snapshot = txData;
             xSemaphoreGive(dataMutex);
         }
@@ -190,11 +190,8 @@ void updateDisplay(const TxData &) {
                                           display.print(powerAverage);
                                           display.print("W");
                               }
-                              if ((inpVoltage < 32.2) and (inpVoltage > 0)) {lowBatt = true;} // BATTERY ALARM ACTIVATION
-                              if ((inpVoltage > 39.5) and (lowBatt)) {  // reset battery allarm
-                                    lowBatt = false;
-                                    lock = true;
-                              }
+                              if (lowBattFlag && !lowBatt) {lowBatt = true;}   // allarme deciso dalla RX (soglia 10s/12s) // BATTERY ALARM ACTIVATION
+                              if (!lowBattFlag && lowBatt) {lowBatt = false;}  // reset battery allarm (dalla RX)
                               if (lowBatt){vibrationTime = 1000;}                 
                               counter++;
                         }else{
@@ -266,7 +263,7 @@ void showBatt(){
             display.print("V");
             showBottom();
       }while (display.nextPage());
-      if ((inpVoltage > 39.5) and (lowBatt)) {
+      if (!lowBattFlag && lowBatt) {
             lowBatt = false;
             lock = true;
       }
@@ -284,6 +281,7 @@ void showData() {
       }
       if (showView == 0) {
             // --- VIEW 1 ---
+            float powerIndexFloat = powerIndex / 10;
             do {
                   display.setTextSize(3);
                   display.setCursor(10,0);
@@ -312,7 +310,7 @@ void showData() {
                   display.print("V"); 
                   display.setCursor(0,150);     
                   display.print("R.VOTE "); 
-                  display.print(powerIndex);   
+                  display.print(powerIndexFloat);   
                   display.setCursor(0,180);
                   display.print("Score: ");
                   display.print(score);          // rider score dalla RX (fix 20/08/2026)
@@ -322,7 +320,7 @@ void showData() {
 //            display.firstPage();
             do {
                   display.setTextSize(3);
-                  display.setCursor(0,0);
+                  display.setCursor(10,0);
                   display.print("RIDE DATA"); //display.println(file);
                   display.setCursor(0,45);
                   display.print("Takeoff:"); display.println(takeOff); 
@@ -349,7 +347,7 @@ void showData() {
       }
 
       vibrationTime = 0;
-      if ((inpVoltage > 39.5) && lowBatt) {
+      if (!lowBattFlag && lowBatt) {
             lowBatt = false;
             lock = true;
       }
@@ -373,8 +371,7 @@ void showNoConnect(){
             display.print("or the code");       
             display.setCursor(0,155);
             display.print("for pairing");  
-            display.nextPage();          
-      } while (display.nextPage());
+                  } while (display.nextPage());
 }
 
 void showBottom(){
@@ -382,8 +379,13 @@ void showBottom(){
           display.drawLine(0, 180, 200, 180, GxEPD_BLACK); 
           display.setTextSize(2);
           display.setCursor(0,185);
-            display.print("Board "); 
-          display.print(boardCode, DEC);  // receiver number        
+          if (hrValid) {                 // fascia presente: battito al posto del numero board
+                display.print("BPM: ");
+                display.print(heartRate);
+          } else {                       // nessuna fascia: resta tutto come prima
+                display.print("Board ");
+                display.print(boardCode, DEC);
+          }  // receiver number        
 //          display.print("Ride N.:"); 
 //          display.print(file); 
           display.setCursor(145,185);
@@ -428,22 +430,20 @@ void showQR(){  // show QR code for the on line manual of the controller
 }
 
 void showUnlock(){
-            do{
-                  display.setPartialWindow(0, 0, 200, 200);
-                  display.firstPage();
-                  display.fillScreen(GxEPD_WHITE);
-                  display.setTextColor(GxEPD_BLACK); 
-                  display.setTextSize(4);
-                  display.setCursor(15,15);
-                  display.print("Press 2");
-                  display.setCursor(15,60);
-                  display.print("Seconds");
-                  display.setCursor(75,105);
-                  display.print("to");                  
-                  display.setCursor(30,150);
-                  display.print("UNLOCK");
-            }while(display.nextPage());
-            delay(1000);
+      // fix 13/10/2026: NIENTE firstPage()/nextPage() qui: disegna nella pagina
+      // gia aperta da updateDisplay(). Annidare le sequenze GxEPD2 poteva
+      // lasciare il ciclo esterno senza fine -> display bloccato.
+      display.fillScreen(GxEPD_WHITE);
+      display.setTextColor(GxEPD_BLACK);
+      display.setTextSize(4);
+      display.setCursor(15,15);
+      display.print("Press 2");
+      display.setCursor(15,60);
+      display.print("Seconds");
+      display.setCursor(75,105);
+      display.print("to");
+      display.setCursor(30,150);
+      display.print("UNLOCK");
 }
 
 void showGo(){

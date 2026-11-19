@@ -1,10 +1,10 @@
 /*
     TecnoFly remote controller for Foil Assist system
-    2025 writed by Roberto Assiro and Lorenzo Assiro with the great contribution of UccioBot
+    2026 writed by Roberto Assiro and Lorenzo Assiro with the great contribution of UccioBot
     
     This program is free software under the terms of the GNU General Public License 
     as published by the Free Software Foundation.
-    VERSION 5.xx jan 2025 - EPAPER DISPLAY version GDEH0154D67 200x200, SSD1681
+    VERSION 5.xx - 2026 - EPAPER DISPLAY version GDEH0154D67 200x200, SSD1681
     ESP32 Core 3.5.5 + FreeRTOS
 */
 #include <WiFi.h>
@@ -28,6 +28,13 @@
 #include <freertos/task.h>
 #include <freertos/semphr.h>
 
+// BLE fascia cardiaca: 0 = compilato fuori (sta nella partizione standard 1.28 MB)
+// 1 = abilita cardio.ino (richiede partition scheme da 1.9 MB)
+#define ENABLE_CARDIO 0
+#if ENABLE_CARDIO
+#include <NimBLEDevice.h>
+#endif
+
 # define LED  2
 # define CHARGING 3
 # define VIBRATOR  8
@@ -41,12 +48,12 @@ Adafruit_NeoPixel wsLED(WS_LED_COUNT, WS_LED_PIN, NEO_GRB + NEO_KHZ800);
 GxEPD2_BW<GxEPD2_154_D67, GxEPD2_154_D67::HEIGHT> 
 display(GxEPD2_154_D67(/*CS=*/ 7, /*DC=*/ 1, /*RES=*/ 9, /*BUSY=*/ 10)); // GDEH0154D67 200x200, SSD1681
 
-String VERSION = "5.49";
+String VERSION = "5.55";
 const char* ssidService     = "tecnofly";
 const char* passwordService = "tecnofly";
 
-String upgradeServer = "http://www.eoloonline.it/firmware/foilAssist/";
-String upgradeFile = "foilAssistController5.bin"; //foilAssistController5.bin
+String upgradeServer = "http://www.eoloonline.it/firmware/";
+String upgradeFile = "foilAssistController5.bin";
 #define EEPROM_SIZE 32
 bool espState = false;   
 bool firstConnection = false;
@@ -70,6 +77,7 @@ int throttle;
 
 int counter;
 bool lowBatt = false;
+bool lowBattFlag = false;      // allarme batteria deciso dalla RX (fix 13/10/2026)
 bool lock = true;
 bool unlockHolding = false;                // trigger premuto per la procedura di unlock
 bool unlockArmed = false;                  // pressione lunga completata, in attesa di rilascio
@@ -87,7 +95,20 @@ volatile uint32_t trustMenuExitTime = 0;   // fix 06/09/2026: istante uscita men
 
 uint16_t propRpm = 0;   // rpm MECCANICI elica (0 = non impostato) - inviati alla RX
 bool propCw = true;      // true = CW/orario, false = CCW/antiorario
-struct TxPkt { int throttle; uint16_t trustWatts; uint16_t propRpm; uint8_t propCw; };  // ESP-NOW: throttle (4B) + trustWatts (2B)
+// Config motore selezionabile dal menu: 0 = BLDC (mcconf.bin), 1 = FOC (focconf.bin).
+// Valori "coded" nel pacchetto per non reagire a padding di firmware vecchi.
+volatile uint8_t motorCfgSel = 0;
+volatile bool motorMenuActive = false;
+// true solo dopo aver letto lo stato reale dalla RX: prima di allora il
+// controller NON annuncia nessuna selezione, cosi' un controller nuovo o
+// appena acceso non puo' sovrascrivere la configurazione della ricevente.
+volatile bool motorCfgSynced = false;
+#define MOTORCFG_BLDC 0xA0
+#define MOTORCFG_FOC  0xA1
+// BLE fascia cardiaca (definite qui: usate da main, display e cardio.ino)
+volatile uint8_t heartRate = 0;
+volatile bool    hrValid   = false;
+struct TxPkt { int throttle; uint16_t trustWatts; uint16_t propRpm; uint8_t propCw; uint8_t heartRate; uint8_t hrValid; uint8_t motorCfg; };  // ESP-NOW TX->RX (12 B: i due campi HR stanno nel padding)  // ESP-NOW: throttle (4B) + trustWatts (2B)
 uint8_t surfingSeconds;  // timer for seconds in surfing mode (throttle off)
 uint16_t surfingMinutes;
 
@@ -167,6 +188,8 @@ typedef struct struct_message {
         uint record;
         uint16_t trustWatts;   // dalla RX: l_watt_max reale del VESC (sync trust, fix 20/08/2026)
         int score;             // dalla RX: rider score (fix 20/08/2026) — VIEW 1 dati
+        bool lowBattFlag;      // dalla RX: allarme batteria (fix 13/10/2026)
+        uint8_t motorCfg;      // dalla RX: config motore attiva (MOTORCFG_BLDC / MOTORCFG_FOC)
         //float watthour;
 } struct_message;
 
@@ -196,6 +219,11 @@ void OnDataSent(const esp_now_send_info_t *info, esp_now_send_status_t status) {
 }
 
 void OnDataRecv(const esp_now_recv_info_t *info, const uint8_t *incomingData, int len){    
+        // Reject malformed frames and packets from a device other than the paired receiver.
+        if (info == nullptr || incomingData == nullptr || len != (int)sizeof(incomingReadings) ||
+            memcmp(info->src_addr, broadcastAddress, sizeof(broadcastAddress)) != 0) {
+                return;
+        }
         memcpy(&incomingReadings, incomingData, sizeof(incomingReadings));
         inpVoltage = incomingReadings.a;
         tempMosfet = incomingReadings.tempMosfet;
@@ -219,13 +247,20 @@ void OnDataRecv(const esp_now_recv_info_t *info, const uint8_t *incomingData, in
         pumping = incomingReadings.pumping;
         boardMoving = incomingReadings.boardMoving;   
         record = incomingReadings.record;     
-        score = incomingReadings.score;      // rider score (fix 20/08/2026)
+        score = incomingReadings.score;
+        lowBattFlag = incomingReadings.lowBattFlag;   // allarme batteria dalla RX (fix 13/10/2026)      // rider score (fix 20/08/2026)
         // Sync trust dalla board (fix 20/08/2026): il controller adotta l_watt_max reale
         // del VESC. NIENTE EEPROM: la fonte di verità è il VESC (mcconf.bin sulla RX),
         // sul controller il valore vive solo in RAM.
         if (!trustMenuActive && (millis() - trustMenuExitTime > 5000) && incomingReadings.trustWatts >= 1500 && incomingReadings.trustWatts <= 2200) {
             trustWatts = incomingReadings.trustWatts;
             trustSynced = true;
+        }
+        // Sync config motore dalla board: il menu mostra sempre il file davvero attivo
+        // nella ricevente (0 = mcconf.bin, 1 = focconf.bin). Ignorato durante la selezione.
+        if (!motorMenuActive && (incomingReadings.motorCfg == MOTORCFG_BLDC || incomingReadings.motorCfg == MOTORCFG_FOC)) {
+            motorCfgSel = (incomingReadings.motorCfg == MOTORCFG_FOC) ? 1 : 0;
+            motorCfgSynced = true;   // da ora il controller conosce lo stato reale
         }
     //      waveBuffer[incomingReadings.rideNumber] = incomingReadings.wave;
     //      takeOffBuffer[incomingReadings.rideNumber] = incomingReadings.takeOff;
@@ -295,6 +330,9 @@ void setup() {
     dataMutex = xSemaphoreCreateMutex();
     startingEpaperDisplay();
     firstInit();
+#if ENABLE_CARDIO
+    cardioBegin();   // BLE fascia cardiaca (task a bassa priorita')
+#endif
     //hallTest();  // ONLY FOR TEST WITH USB CONNECTED 
 
      // ---------- TASKS ----------
@@ -348,7 +386,7 @@ void espnowTask(void *pvParameters) {
             // Dopo il sync invia il valore adottato (identico a quello della board -> nessuna riscrittura).
             // Niente EEPROM: il trust vive solo in RAM (fonte di verità = VESC/RX).
 
-            TxPkt pkt = { throttleToSend, trustSynced ? trustWatts : 0, propRpm, propCw ? 1 : 0 };   // elica inclusa nel pacchetto
+            TxPkt pkt = { throttleToSend, trustSynced ? trustWatts : 0, propRpm, propCw ? 1 : 0, heartRate, hrValid ? 1 : 0, motorCfgSynced ? (motorCfgSel ? MOTORCFG_FOC : MOTORCFG_BLDC) : 0 };   // config motore solo dopo il sync
             esp_now_send(broadcastAddress, (uint8_t *)&pkt, sizeof(pkt));
             vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(transmissionInterval));
         }
