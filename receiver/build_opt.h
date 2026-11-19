@@ -1,0 +1,3 @@
+-DCORE_DEBUG_LEVEL=0
+-fno-rtti
+-fno-exceptions

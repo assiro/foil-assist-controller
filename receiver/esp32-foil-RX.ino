@@ -17,7 +17,10 @@
     -3.14 ride data format binary
     -3.15 imu file activated and score calc
     -3.40 new web page
-    -3.50 vescUart modification stability - Freertos control - battery cutoff control - battery allarm improved 10s 12s
+    -3.50 vescUatr modification for stability - Freertos control - battery cutoff control - battery allarm improved 10s 12s
+    -3.51 improvement battery percentage scale - ottimization
+    -3.52 ADXL345 axis remapping GY291 and GY85 module implementation
+    -3.53 Cardio device on BLE
 */
 #include <WiFi.h>
 #include <esp_now.h>
@@ -39,6 +42,18 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
+// ---- Debug su seriale (fix 31/10/2026): 0 = tutto il debug e' compilato fuori ----
+#define ENABLE_DEBUG_LOG 0
+#if ENABLE_DEBUG_LOG
+  #define DBG(...)      Serial.printf(__VA_ARGS__)
+  #define DBGLN(...)    Serial.println(__VA_ARGS__)
+  #define DBGPRINT(...) Serial.print(__VA_ARGS__)
+#else
+  #define DBG(...)      do {} while (0)
+  #define DBGLN(...)    do {} while (0)
+  #define DBGPRINT(...) do {} while (0)
+#endif
+
 #define EEPROM_SIZE 64
 #define escpin 4
 
@@ -46,12 +61,15 @@ const char* ssidService     = "tecnofly";
 const char* passwordService = "tecnofly";
 const char* serverBase = "http://www.eoloonline.it/firmware/webServer";
 const char* upgradeServer = "http://www.eoloonline.it/firmware/";
-String upgradeFile = "foilAssistReceiver.bin";  //foilAssistReceiver.bin
+String upgradeFile = "foilAssistReceiver.bin";  
 const char ssidName[] = "TecnoFly ";
 char ssid[20];
 
 const char* password = "";
-String VERSION = "3.50";
+String VERSION = "3.57";   // 19/11/2026: monitor heap (3 stati) + log motivo riavvio
+// Marcatore di build: la pagina web lo mostra, cosi' si vede subito se il
+// firmware caricato e' quello nuovo o se e' rimasto quello di prima.
+const char* RX_BUILD = __DATE__ " " __TIME__;
 const char* PARAM_INPUT_1 = "number";
 const int GRAVITY1 = 33; // gravity sensor 1 for auto lock
 const int GRAVITY2 = 32; // gravity sensor 2 for auto lock
@@ -68,7 +86,6 @@ int Poles = 14;                  //Poles of motor
 // battery 10s
 int batEmptyValue = 320;    // value x 10  (32.0V = 3.2V/cella, vuota)
 int batFullValue = 412;     // value x 10 - fix 30/08/2026: 10s piena a riposo = 41.2V (4.12V/cella).
-                            // Prima 42.0V teorici MAI raggiunti a riposo -> batteria carica non dava mai 99%
 
 // --- Allarme batteria (fix 13/10/2026): soglie in EEPROM, pacco rilevato da batStatus() ---
 float battAlarm10s = 31.0;    // soglia allarme 10s (V)
@@ -88,6 +105,13 @@ float throttleCurveMix   = 0.0f;
 #define EEPROM_CURVE_GAMMA 52
 #define EEPROM_CURVE_MIX   56
 #define EEPROM_CURVE_MAGIC 60
+#define EEPROM_AXIS_MAGIC 28   // 28: magic mappa assi accelerometro
+#define EEPROM_AXIS_MAP   29   // 29..31: mappa X/Y/Z (sorgente<<1 | invertito)
+#define EEPROM_TXCFG      61   // 61: 1 = il controller puo' modificare la config VESC (default 0)
+#define EEPROM_RADIOTMO   62   // 62: timeout radio in unita' da 100 ms (5..15)
+#define EEPROM_CFGFILE   63   // 63: file config motore attivo (0 = mcconf.bin, 1 = focconf.bin)
+char    motorCfgPath[20] = "/mcconf.bin";   // file config motore attivo
+uint8_t motorCfgActive   = 0;               // 0 = mcconf.bin, 1 = focconf.bin
 #define CURVE_CFG_MAGIC 0x5A
 
 void loadThrottleCurveConfig(){
@@ -96,7 +120,7 @@ void loadThrottleCurveConfig(){
       EEPROM.get(EEPROM_CURVE_MIX, throttleCurveMix);
       if (!(throttleCurveGamma >= 0.40f && throttleCurveGamma <= 3.00f)) throttleCurveGamma = 1.0f;
       if (!(throttleCurveMix >= 0.0f && throttleCurveMix <= 1.0f)) throttleCurveMix = 0.0f;
-      Serial.printf("THROTTLE CURVE: gamma %.2f mix %.2f\n", throttleCurveGamma, throttleCurveMix);
+      DBG("THROTTLE CURVE: gamma %.2f mix %.2f\n", throttleCurveGamma, throttleCurveMix);
 }
 
 void saveThrottleCurveConfig(){
@@ -126,7 +150,7 @@ void loadBattAlertConfig(){
       if (!(battAlarm12s > 5 && battAlarm12s < 60)) battAlarm12s = 37.2;
       if (!(battReset10s > 5 && battReset10s < 60)) battReset10s = 39.5;
       if (!(battReset12s > 5 && battReset12s < 60)) battReset12s = 47.4;
-      Serial.printf("BATT ALARM cfg: 10s %.1f/%.1f  12s %.1f/%.1f\n", battAlarm10s, battReset10s, battAlarm12s, battReset12s);
+      DBG("BATT ALARM cfg: 10s %.1f/%.1f  12s %.1f/%.1f\n", battAlarm10s, battReset10s, battAlarm12s, battReset12s);
 }
 
 void saveBattAlertConfig(){
@@ -171,7 +195,7 @@ const unsigned long DIRECT_CUT_HOLD_MS = 3000;
 
 // ── EVENT LOG ──
 #define EVENT_LOG "/events.log"
-#define EVENT_LOG_MAX 10000
+#define EVENT_LOG_MAX 30000
 
 struct vescValues {
         float voltage;  
@@ -203,6 +227,7 @@ struct vescValues {
         uint16_t trustWatts;   // l_watt_max reale VESC (1500-2200W) — sync trust col TX (fix 20/08/2026)
         int score;             // rider score (fix 20/08/2026) — mostrato sulla VIEW 1 del controller
         bool lowBattFlag;     // allarme batteria calcolato dalla RX (fix 13/10/2026)
+        uint8_t motorCfg;     // config motore attiva (MOTORCFG_BLDC / MOTORCFG_FOC): sync menu TX
 //        float watthour;
 };
 struct vescValues data;
@@ -222,6 +247,14 @@ float whBaseline = 0;   // Wh VESC all'accensione (fix 10/08/2026: il contatore 
 int batpercentage;
 uint batCapacity;
 uint percentageOfCapacity;
+// --- Fix rapido batteria (31/10/2026): percentuale monotona, senza salti ---
+float consumedWhAcc = 0.0f;   // Wh consumati accumulati (solo delta positivi)
+float whLastSample = -1.0f;   // ultimo wattHours letto dal VESC
+int   socRaw    = 99;         // % dal conteggio Wh
+int   socLatch  = 99;         // tetto della sessione: puo solo scendere
+int   socOut    = 99;         // % filtrata inviata al controller via ESP-NOW
+int   socEmptyV = 310;        // tensione pacco vuoto in 0,1 V (dal pacco rilevato)
+int   socFullV  = 420;        // tensione pacco pieno in 0,1 V
 unsigned long totalWatt;
 uint powerCounter;
 uint powerAverage;
@@ -243,7 +276,24 @@ uint16_t rxTrustWatts = 0;        // ultimi watt ricevuti dal TX (1500-2200)
 uint16_t rxPropRpm = 0;               // rpm MECCANICI elica ricevuti dal TX
 bool     rxPropCw  = true;            // senso richiesto (true = CW/orario)
 volatile bool pendingProp = false;  // true = da applicare al VESC nel loop()
-volatile bool pendingPower = false; // true = da applicare al VESC nel loop()
+volatile bool pendingPower = false;
+bool vescCfgFromTx = false;   // allow controller to change VESC config (EEPROM 61, default OFF)
+// Config motore richiesta dal controller (0 = mcconf.bin, 1 = focconf.bin).
+// Il cambio arriva nel padding del pacchetto come valore "coded", cosi' un
+// controller vecchio (byte a 0) non puo' far scattare un cambio per caso.
+volatile uint8_t rxMotorCfgReq = 0;
+volatile bool    pendingMotorCfg = false;
+volatile uint32_t motorCfgBlockUntil = 0;   // dopo un tentativo fallito, niente retry per 15s
+// Ultimi valori ricevuti dal controller. Servono a distinguere un comando
+// NUOVO dal valore che il TX ripete in ogni pacchetto (edge detection):
+// senza questo, una scelta fatta dalla pagina web veniva annullata dal
+// pacchetto successivo del controller (conflitto segnalato 12/11/2026).
+uint16_t lastTxTrust    = 0;
+uint16_t lastTxPropRpm  = 0;
+uint8_t  lastTxPropCw   = 0xFF;
+uint8_t  lastTxMotorCfg = 0xFF;
+#define MOTORCFG_BLDC 0xA0
+#define MOTORCFG_FOC  0xA1
 portMUX_TYPE rxStateMux = portMUX_INITIALIZER_UNLOCKED;
 SemaphoreHandle_t vescUartMutex = nullptr;
 SemaphoreHandle_t mcconfMutex = nullptr;
@@ -273,16 +323,21 @@ struct VescConfigRequest {
     uint16_t watts;
     uint16_t propRpm;
     bool propCw;
+    uint8_t motor;     // 0 = mcconf.bin, 1 = focconf.bin
+    uint8_t motorOk;   // esito del cambio config (solo per il log)
 };
 
 static constexpr uint8_t VESC_CONFIG_POWER = 0x01;
 static constexpr uint8_t VESC_CONFIG_PROP  = 0x02;
+static constexpr uint8_t VESC_CONFIG_MOTOR = 0x04;
 QueueHandle_t vescConfigQueue = nullptr;
 QueueHandle_t vescConfigResultQueue = nullptr;
 
 // Pacchetto ESP-NOW dal TX: deve matchare TxPkt del trasmettitore
-struct RxPkt { int throttle; uint16_t trustWatts; uint16_t propRpm; uint8_t propCw; };
+struct RxPkt { int throttle; uint16_t trustWatts; uint16_t propRpm; uint8_t propCw; uint8_t heartRate; uint8_t hrValid; uint8_t motorCfg; };
 float voltageOffset;
+uint8_t rxHeartRate = 0;   // bpm dal controller (BLE fascia)
+bool    rxHrValid   = false;
 char message1[9];
 char message2[9];
 char message3[9];
@@ -357,8 +412,13 @@ void OnDataSent(const esp_now_send_info_t *info, esp_now_send_status_t status) {
 // data is received by ESP-NOW
 void onReceiveData(const esp_now_recv_info_t *info, const uint8_t *data, int len){
         // Throttle e impostazioni arrivano nello stesso pacchetto del TX.
-        // Ignora pacchetti malformati: non leggere mai campi da un RxPkt parziale.
-        if (info == nullptr || info->rx_ctrl == nullptr || data == nullptr || len < (int)sizeof(RxPkt)) {
+        // Retrocompatibilita (fix 27/10/2026): il vecchio controller ESP8266 (v4)
+        // invia SOLO un int con il throttle (4 byte). Accettiamo entrambi i formati.
+        if (info == nullptr || info->rx_ctrl == nullptr || data == nullptr) {
+            return;
+        }
+        const bool legacyTx = (len == (int)sizeof(int));
+        if (!legacyTx && len < (int)sizeof(RxPkt)) {
             return;
         }
         receivedData = true;
@@ -378,19 +438,67 @@ void onReceiveData(const esp_now_recv_info_t *info, const uint8_t *data, int len
         // -----------------
         
         RxPkt pkt;
-        memcpy(&pkt, data, sizeof(pkt));
-        int throttle_value = pkt.throttle;
-        portENTER_CRITICAL(&rxStateMux);
-        if (pkt.trustWatts >= 1500 && pkt.trustWatts <= 2200 && pkt.trustWatts != rxTrustWatts) {
-            rxTrustWatts = pkt.trustWatts;
-            pendingPower = true;
+        if (legacyTx) {
+            // Vecchio ESP8266: solo throttle, nessun trust/elica -> campi a zero
+            memset(&pkt, 0, sizeof(pkt));
+            memcpy(&pkt.throttle, data, sizeof(int));
+        } else {
+            memcpy(&pkt, data, sizeof(pkt));
         }
-        // ELICA: nuova impostazione ricevuta dal TX (rpm meccanici 2500-5500 + senso)
-        if (pkt.propRpm >= 2500 && pkt.propRpm <= 5500 &&
-            (pkt.propRpm != rxPropRpm || (pkt.propCw != 0) != rxPropCw)) {
-            rxPropRpm = pkt.propRpm;
-            rxPropCw  = (pkt.propCw != 0);
-            pendingProp = true;
+        int throttle_value = pkt.throttle;
+        rxHeartRate = pkt.heartRate;
+        rxHrValid   = (pkt.hrValid != 0);
+        portENTER_CRITICAL(&rxStateMux);
+        // I campi di configurazione arrivano in OGNI pacchetto del controller:
+        // vanno trattati come comandi a varco (edge), non come stato.
+        // Confrontarli con lo stato della ricevente faceva si' che una scelta
+        // fatta dalla pagina web venisse riportata indietro dal pacchetto
+        // successivo (conflitto pagina web <-> menu controller, 12/11/2026).
+        // EEPROM SOVRANA (richiesta 13/11/2026): il primo valore valido che si
+        // vede dal controller serve solo ad allinearsi, non a comandare.
+        // Cosi' un controller nuovo o appena acceso non puo' cambiare i valori
+        // della ricevente: si cambia solo quando il controller CAMBIA davvero.
+        if (vescCfgFromTx && !legacyTx && pkt.trustWatts >= 1500 && pkt.trustWatts <= 2200) {
+            if (lastTxTrust == 0) {
+                lastTxTrust = pkt.trustWatts;          // allineamento, nessuna azione
+            } else if (pkt.trustWatts != lastTxTrust) {
+                lastTxTrust = pkt.trustWatts;
+                if (pkt.trustWatts != rxTrustWatts) {
+                    rxTrustWatts = pkt.trustWatts;
+                    pendingPower = true;
+                }
+            }
+        }
+        // ELICA: stesso principio.
+        if (vescCfgFromTx && !legacyTx && pkt.propRpm >= 2500 && pkt.propRpm <= 5500) {
+            uint8_t cw = (pkt.propCw != 0) ? 1 : 0;
+            if (lastTxPropCw == 0xFF) {
+                lastTxPropRpm = pkt.propRpm;           // allineamento, nessuna azione
+                lastTxPropCw  = cw;
+            } else if (pkt.propRpm != lastTxPropRpm || cw != lastTxPropCw) {
+                lastTxPropRpm = pkt.propRpm;
+                lastTxPropCw  = cw;
+                if (pkt.propRpm != rxPropRpm || (cw != 0) != rxPropCw) {
+                    rxPropRpm = pkt.propRpm;
+                    rxPropCw  = (cw != 0);
+                    pendingProp = true;
+                }
+            }
+        }
+        // CONFIG MOTORE dal TX: 0xA0 = BLDC (mcconf.bin), 0xA1 = FOC (focconf.bin).
+        // Primo pacchetto = allineamento; poi solo variazioni reali.
+        if (vescCfgFromTx && !legacyTx &&
+            (pkt.motorCfg == MOTORCFG_BLDC || pkt.motorCfg == MOTORCFG_FOC)) {
+            if (lastTxMotorCfg == 0xFF) {
+                lastTxMotorCfg = pkt.motorCfg;         // allineamento, nessuna azione
+            } else if (pkt.motorCfg != lastTxMotorCfg) {
+                lastTxMotorCfg = pkt.motorCfg;
+                uint8_t want = (pkt.motorCfg == MOTORCFG_FOC) ? 1 : 0;
+                if (want != motorCfgActive && !pendingMotorCfg && millis() > motorCfgBlockUntil) {
+                    rxMotorCfgReq = want;
+                    pendingMotorCfg = true;
+                }
+            }
         }
         portEXIT_CRITICAL(&rxStateMux);
         EspDelays = millis() - EspLastTimeReceived;
@@ -419,10 +527,10 @@ void onReceiveData(const esp_now_recv_info_t *info, const uint8_t *data, int len
         EspLastTimeReceived = millis();
         lastTimeReceived = millis();       
         /*
-        Serial.print("Throttle: ");
-        Serial.print(throttle_value);
-        Serial.print(" - period: ");
-        Serial.println(EspDelays);  */
+        DBGPRINT("Throttle: ");
+        DBGPRINT(throttle_value);
+        DBGPRINT(" - period: ");
+        DBGLN(EspDelays);  */
 }
   
 
@@ -466,6 +574,63 @@ void vescConfigWorker(void* parameter) {
                 request.propCw = newer.propCw;
                 request.flags |= VESC_CONFIG_PROP;
             }
+            if (newer.flags & VESC_CONFIG_MOTOR) {
+                request.motor = newer.motor;
+                request.flags |= VESC_CONFIG_MOTOR;
+            }
+        }
+
+        // Cambio configurazione motore: seleziona il file e lo scrive nel VESC.
+        // Va fatto PRIMA di watt/elica, cosi' gli altri valori si applicano al
+        // file appena attivato. Se il file manca non si tocca nulla.
+        if (request.flags & VESC_CONFIG_MOTOR) {
+            uint8_t idx = request.motor;
+            uint8_t prev = motorCfgActive;
+            bool ok = false;
+            if (motorCfgExists(idx)) {
+                motorCfgSet(idx);
+                // La scrittura puo' incrociare la telemetria o una lettura di
+                // versione andata a vuoto: 3 tentativi prima di dichiarare il
+                // fallimento. Senza retry il file restava selezionato ma il
+                // VESC non veniva programmato (bug segnalato 10/11/2026).
+                vescFwCacheInvalidate();
+                for (int attempt = 0; attempt < 3 && !ok; attempt++) {
+                    if (attempt) vTaskDelay(pdMS_TO_TICKS(300 * attempt));
+                    ok = flashMcconfToVesc();
+                    DBG("MOTORCFG: tentativo %d su %s -> %s\n",
+                        attempt + 1, motorCfgFileName(idx), ok ? "OK" : "fallito");
+                }
+                // Se il VESC non ha accettato la config, si torna al file di
+                // prima: il menu e la pagina web devono mostrare la verita'.
+                if (!ok) {
+                    motorCfgSet(prev);
+                    motorCfgBlockUntil = millis() + 15000;
+                }
+            } else {
+                DBG("MOTORCFG: %s mancante, cambio annullato\n", motorCfgFileName(idx));
+                motorCfgBlockUntil = millis() + 15000;
+            }
+            VescConfigRequest res = {};
+            res.flags = VESC_CONFIG_MOTOR;
+            res.motor = idx;
+            res.motorOk = ok ? 1 : 0;
+            if (vescConfigResultQueue != nullptr) {
+                xQueueSend(vescConfigResultQueue, &res, 0);
+            }
+            request.flags &= ~VESC_CONFIG_MOTOR;
+            if (!ok) {
+                request.flags = 0;
+                haveRequest = false;
+                request = {};
+                continue;
+            }
+            // Solo cambio config: niente query vuota (evita una seconda
+            // scrittura identica al VESC).
+            if (!(request.flags & (VESC_CONFIG_POWER | VESC_CONFIG_PROP))) {
+                haveRequest = false;
+                request = {};
+                continue;
+            }
         }
 
         char query[80];
@@ -484,7 +649,7 @@ void vescConfigWorker(void* parameter) {
         bool ok = setVescParamsFromQuery(String(query), portMAX_DELAY);
         if (!ok) {
             if (!failureReported) {
-                Serial.println("VESC config request failed; will retry");
+                DBGLN("VESC config request failed; will retry");
                 failureReported = true;
             }
             vTaskDelay(pdMS_TO_TICKS(5000));
@@ -502,11 +667,13 @@ void vescConfigWorker(void* parameter) {
 
 
 void setup() {
-        Serial.begin(115200);
+  #if ENABLE_DEBUG_LOG
+      Serial.begin(115200);
+#endif
         vescUartMutex = xSemaphoreCreateMutex();
         mcconfMutex = xSemaphoreCreateRecursiveMutex();
         if (vescUartMutex == nullptr || mcconfMutex == nullptr) {
-            Serial.println("Failed to create firmware mutexes");
+            DBGLN("Failed to create firmware mutexes");
             return;
         }
         Serial2.begin(115200, SERIAL_8N1, 16, 17);// VESC GPIO 16=RX and 17=TX */
@@ -519,26 +686,26 @@ void setup() {
         Wire.begin(27, 26);
         EEPROM.begin(EEPROM_SIZE);
         if (!LittleFS.begin(FORMAT_LITTLEFS_IF_FAILED)) {
-            Serial.println("LittleFS Mount Failed");
+            DBGLN("LittleFS Mount Failed");
             return;
         }
         vescConfigQueue = xQueueCreate(4, sizeof(VescConfigRequest));
         vescConfigResultQueue = xQueueCreate(4, sizeof(VescConfigRequest));
         if (vescConfigQueue == nullptr || vescConfigResultQueue == nullptr ||
             xTaskCreatePinnedToCore(vescConfigWorker, "vescConfig", 4096, nullptr, 1, nullptr, 0) != pdPASS) {
-            Serial.println("VESC config worker unavailable; remote config changes disabled");
+            DBGLN("VESC config worker unavailable; remote config changes disabled");
             if (vescConfigQueue != nullptr) vQueueDelete(vescConfigQueue);
             if (vescConfigResultQueue != nullptr) vQueueDelete(vescConfigResultQueue);
             vescConfigQueue = nullptr;
             vescConfigResultQueue = nullptr;
         }
-        Serial.println("");  
-        Serial.println(VERSION); 
+        DBGLN("");  
+        DBGLN(VERSION); 
 //        Serial.println("Setting Access Point... ");
 /*
         WiFi.mode(WIFI_AP_STA);  // Set device as Access point
         macSetting();
-        Serial.println(WiFi.softAPConfig(local_IP, gateway, subnet) ? "Web Server Ready" : "Web Server Failed!");
+        DBGLN(WiFi.softAPConfig(local_IP, gateway, subnet) ? "Web Server Ready" : "Web Server Failed!");
         WiFi.softAP(ssid, password);
 */
 
@@ -547,13 +714,14 @@ void setup() {
         WiFi.mode(WIFI_AP_STA);  // Set device as Access point
         macSetting();
           // 2. Avvio AP con canale
-        Serial.println(WiFi.softAPConfig(local_IP, gateway, subnet) ? "Web Server Ready" : "Web Server Failed!");         
+        bool apConfigured = WiFi.softAPConfig(local_IP, gateway, subnet);
+        DBGLN(apConfigured ? "Web Server Ready" : "Web Server Failed!");
         WiFi.softAP(ssid, password, channel);
         WiFi.setTxPower(WIFI_POWER_19_5dBm); 
         esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);  // fixed channel (es. 1)
 //        esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_LR);  // enable long range
 //////////////////////////////////////////////////////////////////////////
-        Serial.println(ssid); 
+        DBGLN(ssid); 
         delay(100);
         adxl345Setup();
         api();
@@ -566,10 +734,10 @@ void setup() {
         ElegantOTA.begin(&server);    // Start ElegantOTA
         // Init ESP-NOW
         if (esp_now_init() != 0) {
-            Serial.println("Error initializing ESP-NOW");
+            DBGLN("Error initializing ESP-NOW");
             return;
         }else{
-            Serial.println("ESP-NOW initializing OK!");
+            DBGLN("ESP-NOW initializing OK!");
         }
         esp_now_register_send_cb(OnDataSent);
         esp_now_register_recv_cb(onReceiveData);
@@ -579,13 +747,34 @@ void setup() {
         peerInfo.encrypt = false;
         // Add peer        
         if (esp_now_add_peer(&peerInfo) != ESP_OK){
-            Serial.println("Failed to add peer");
+            DBGLN("Failed to add peer");
             return;
         }
         delay(600);
      //   Serial.println("✅ Ready");
         readFileNumber();   
         logEvent("✅ SYSTEM BOOT");             
+        // Diagnostica 18/11/2026: registra PERCHE' la scheda si e' riavviata.
+        // Se in acqua si blocca, il log dice se e' stato un panic, un watchdog
+        // o un brownout. Senza questo dato si tira a indovinare.
+        {
+            const char* rr = "other";
+            switch (esp_reset_reason()) {
+                case ESP_RST_POWERON:   rr = "power-on";  break;
+                case ESP_RST_SW:        rr = "software";  break;
+                case ESP_RST_PANIC:     rr = "PANIC";     break;
+                case ESP_RST_INT_WDT:   rr = "INT_WDT";   break;
+                case ESP_RST_TASK_WDT:  rr = "TASK_WDT";  break;
+                case ESP_RST_WDT:       rr = "WDT";       break;
+                case ESP_RST_BROWNOUT:  rr = "BROWNOUT";  break;
+                case ESP_RST_DEEPSLEEP: rr = "deepsleep"; break;
+                case ESP_RST_EXT:       rr = "external";  break;
+            }
+            char bootMsg[64];
+            snprintf(bootMsg, sizeof(bootMsg), "BOOT reason=%s", rr);
+            logEvent(bootMsg);
+            heapCheck(true);   // verdetto memoria all'accensione
+        }
         batStatus();
         readFileMessage();
         readFileRecord();
@@ -602,12 +791,12 @@ void setup() {
                 portENTER_CRITICAL(&rxStateMux);
                 rxTrustWatts = (uint16_t)w0;
                 portEXIT_CRITICAL(&rxStateMux);
-                Serial.printf("TRUST init: %dW (da mcconf)\n", rxTrustWatts);
+                DBG("TRUST init: %dW (da mcconf)\n", rxTrustWatts);
             }
             if (e0 > 0.0f) {
                 rxPropRpm = (uint16_t)((e0 / (float)MOTOR_POLE_PAIRS) + 0.5f);
                 rxPropCw  = (invertDir == 0);
-                Serial.printf("PROP init: %u rpm %s (mcconf)\n", rxPropRpm, rxPropCw ? "CW" : "CCW");
+                DBG("PROP init: %u rpm %s (mcconf)\n", rxPropRpm, rxPropCw ? "CW" : "CCW");
             }
         }
 
@@ -621,15 +810,25 @@ void setup() {
         
         directCutDegrees = EEPROM.read(3);
         if(directCutDegrees > 0){ directCutEnabled = true; }
+        // Flag: il controller puo' scrivere la config VESC (default OFF)
+        vescCfgFromTx = (EEPROM.read(EEPROM_TXCFG) == 1);
+        // Timeout radio (500..1500 ms, default 1500)
+        {
+            uint8_t to = EEPROM.read(EEPROM_RADIOTMO);
+            timeoutMax = (to >= 5 && to <= 15) ? (int)to * 100 : 1500;
+        }
         
         EEPROM.get(16, axOffset);
         EEPROM.get(20, ayOffset);
         EEPROM.get(24, azOffset);
+        axisMapLoad();   // mappa assi accelerometro da EEPROM (default se assente)
+        motorCfgLoad();  // file config motore attivo: mcconf.bin (default) o focconf.bin
 }
 
 
 void loop() {
         dnsServer.processNextRequest();
+        heapCheck(false);   // verdetto memoria, al massimo 1 riga ogni 10 s
         VescConfigRequest configResult;
         while (vescConfigResultQueue != nullptr &&
                xQueueReceive(vescConfigResultQueue, &configResult, 0) == pdTRUE) {
@@ -645,10 +844,21 @@ void loop() {
                          configResult.propRpm, configResult.propCw ? "CW" : "CCW", erpm);
                 logEvent(buf);
             }
+            if (configResult.flags & VESC_CONFIG_MOTOR) {
+                char buf[72];
+                if (configResult.motorOk) {
+                    snprintf(buf, sizeof(buf), "Motor cfg -> %s",
+                             configResult.motor ? "FOC (focconf.bin)" : "BLDC (mcconf.bin)");
+                } else {
+                    snprintf(buf, sizeof(buf), "Motor cfg FAILED -> %s (VESC not programmed)",
+                             configResult.motor ? "focconf.bin" : "mcconf.bin");
+                }
+                logEvent(buf);
+            }
         }
         uint32_t now = millis();
         delays = now - lastTimeReceived;     
-        if (delays > timeoutMax){ esc.write(0); lastTimeReceived = now;} // stop motor for safety
+        if (delays > timeoutMax){ esc.write(0); lastTimeReceived = now; /*logEvent("SIGNAL time out!");*/ } // stop motor for safety
 
         if (directCutActive) {
             esc.write(0);
@@ -657,7 +867,6 @@ void loop() {
 //                logEvent("DIRECT CUT OFF");
             }
         }
-
 
         portENTER_CRITICAL(&rxStateMux);
         if (packetCount > 0 && (now - lastPacketTime > 300) && (EspDelays < 10000)) {
@@ -701,7 +910,20 @@ void loop() {
         requestedPropCw = rxPropCw;
         pendingProp = false;
         portEXIT_CRITICAL(&rxStateMux);
-        if (doPower || doProp) {
+        bool doMotor = false;
+        uint8_t requestedMotor = 0;
+        portENTER_CRITICAL(&rxStateMux);
+        doMotor = pendingMotorCfg;
+        requestedMotor = rxMotorCfgReq;
+        pendingMotorCfg = false;
+        portEXIT_CRITICAL(&rxStateMux);
+        if (doMotor) {
+            char mbuf[56];
+            snprintf(mbuf, sizeof(mbuf), "Motor cfg request -> %s",
+                     requestedMotor ? "FOC" : "BLDC");
+            logEvent(mbuf);
+        }
+        if (doPower || doProp || doMotor) {
             VescConfigRequest request = {};
             if (doPower) {
                 request.flags |= VESC_CONFIG_POWER;
@@ -712,10 +934,15 @@ void loop() {
                 request.propRpm = requestedPropRpm;
                 request.propCw = requestedPropCw;
             }
+            if (doMotor) {
+                request.flags |= VESC_CONFIG_MOTOR;
+                request.motor = requestedMotor;
+            }
             if (vescConfigQueue == nullptr || xQueueSend(vescConfigQueue, &request, 0) != pdTRUE) {
                 portENTER_CRITICAL(&rxStateMux);
                 if (doPower) pendingPower = true;
                 if (doProp) pendingProp = true;
+                if (doMotor) pendingMotorCfg = true;
                 portEXIT_CRITICAL(&rxStateMux);
             }
         }
@@ -744,31 +971,31 @@ void macSetting(){ // initialization of board code for transmition
             uint8_t lsb = EEPROM.read(1);
             uint8_t msb = EEPROM.read(2);
             if((msb == 255) & (lsb == 255)){generateBoardCode();}   // start fase firts time
-            Serial.print("EEPROM serial number: ");
+            DBGPRINT("EEPROM serial number: ");
             boardCode = (msb << 8) | lsb;
-            Serial.println(boardCode);  
+            DBGLN(boardCode);  
             strcpy(ssid, ssidName);
             char serialNumber[4]; 
             itoa(boardCode, serialNumber, 10);
             strcat(ssid, serialNumber);
             broadcastAddress[4] = msb; 
             broadcastAddress[5] = lsb;  
-            Serial.print("BROADCAST MAC ADDRESS: ");
+            DBGPRINT("BROADCAST MAC ADDRESS: ");
             for (int i = 0; i < 6; i++) {
-                if (i > 0) Serial.print(":");
-                Serial.printf("%02X", broadcastAddress[i]);
+                if (i > 0) DBGPRINT(":");
+                DBG("%02X", broadcastAddress[i]);
             }
-            Serial.println();
+            DBGLN();
             uint8_t customMAC[6] = {0x4C, 0x11, 0xAE, 0x0D, msb, lsb};//RECEIVER MAC ADDRESS
 //            Serial.print("OLD MAC:  ");  
 //            Serial.println(WiFi.macAddress());  
             esp_err_t result = esp_wifi_set_mac(WIFI_IF_STA, customMAC);
             if (result == ESP_OK) {
-                Serial.print("NEW MAC:  ");
-                Serial.println(WiFi.macAddress());                
+                DBGPRINT("NEW MAC:  ");
+                DBGLN(WiFi.macAddress());                
             } else {
-                Serial.print("Error: ");
-                Serial.println(result);
+                DBGPRINT("Error: ");
+                DBGLN(result);
             }
 }
 
@@ -792,7 +1019,84 @@ void generateBoardCode(){
             ESP.restart();
 }
 
+// ======================= MONITOR MEMORIA (19/11/2026) =======================
+// Tre stati, due soglie. Al boot una riga con il verdetto; durante l'uso si
+// logga SOLO quando lo stato cambia, con isteresi, cosi' il log non si riempie
+// e il dato resta leggibile a colpo d'occhio.
+//   OK   : heap libero >= 60 KB
+//   WARN : heap libero 20..60 KB
+//   LOW  : heap libero < 20 KB  -> a rischio di allocazioni fallite
+#define HEAP_OK_KB    60
+#define HEAP_WARN_KB  20
+#define HEAP_HYST_KB   5     // margine per tornare su di stato (evita lampeggi)
+#define HEAP_PERIOD_MS 10000UL
+
+static uint8_t       heapState = 0;
+static unsigned long heapLastCheck = 0;
+
+void heapCheck(bool boot) {
+    unsigned long now = millis();
+    if (!boot && (now - heapLastCheck < HEAP_PERIOD_MS)) return;
+    heapLastCheck = now;
+
+    uint32_t freeB = ESP.getFreeHeap();
+    uint32_t kb    = freeB / 1024UL;
+
+    uint8_t target;
+    if (freeB >= (HEAP_OK_KB * 1024UL))        target = 0;
+    else if (freeB >= (HEAP_WARN_KB * 1024UL)) target = 1;
+    else                                       target = 2;
+
+    if (!boot) {
+        if (target > heapState) {
+            // peggiora: si segnala subito
+        } else if (target < heapState) {
+            // migliora: serve il margine di isteresi perche' sia credibile
+            uint32_t need = (heapState == 1 ? HEAP_OK_KB : HEAP_WARN_KB) * 1024UL
+                          + HEAP_HYST_KB * 1024UL;
+            if (freeB < need) return;
+        } else {
+            return;   // stesso stato: nessuna riga
+        }
+    }
+    heapState = target;
+
+    const char* verdict = (target == 0) ? "ok" : (target == 1) ? "WARN" : "LOW";
+    char msg[64];
+    snprintf(msg, sizeof(msg), "HEAP %s %s free=%uK min=%uK",
+             verdict, boot ? "boot" : "run",
+             (unsigned)kb, (unsigned)(ESP.getMinFreeHeap() / 1024UL));
+    logEvent(msg);
+}
+
+// Stato corrente del monitor memoria, per la card di expert.html.
+uint8_t heapStateNow() { return heapState; }
+
 void logEvent(const char* event) {
+    // Protezione 18/11/2026 --------------------------------------------------
+    // logEvent scrive su LittleFS: se viene chiamata ad alta frequenza (per
+    // esempio dal ciclo dell'accelerometro) la flash si satura di scritture.
+    // Peggio: superata EVENT_LOG_MAX ogni singola chiamata rilegge e riscrive
+    // TUTTO il file, e LittleFS blocca il task durante erase/write: il loop non
+    // alimenta piu' ESC, WiFi ed ESP-NOW e la scheda sembra morta, fino al
+    // distacco della batteria. Qui si limita a 4 eventi al secondo e si
+    // scartano i duplicati ravvicinati: il log resta utile ma non puo' piu'
+    // affondare il sistema.
+    static unsigned long logWinStart = 0;
+    static uint8_t       logWinCount = 0;
+    static unsigned long lastLogMs   = 0;
+    static char          lastEvt[40] = "";
+    unsigned long now = millis();
+    if (now - logWinStart > 1000) { logWinStart = now; logWinCount = 0; }
+    if (logWinCount >= 4) return;                       // tetto: 4 al secondo
+    if (strncmp(lastEvt, event, sizeof(lastEvt) - 1) == 0 &&
+        (now - lastLogMs) < 3000) return;               // duplicato ravvicinato
+    logWinCount++;
+    lastLogMs = now;
+    strncpy(lastEvt, event, sizeof(lastEvt) - 1);
+    lastEvt[sizeof(lastEvt) - 1] = '\0';
+    // -----------------------------------------------------------------------
+
     uint8_t mm = Tminutes;
     uint8_t ss = Tseconds;
     // Se VESC non ha ancora dato dati, calcola da millis()
@@ -813,7 +1117,7 @@ void logEvent(const char* event) {
                 String content = rf.readString();
                 rf.close();
                 // Taglia al primo newline dopo il 30% del file
-                size_t cutAt = content.length() * 30 / 100;
+                size_t cutAt = content.length() * 50 / 100;
                 int cutPos = content.indexOf('\n', cutAt);
                 if (cutPos > 0) {
                     content = content.substring(cutPos + 1);

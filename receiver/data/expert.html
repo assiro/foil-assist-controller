@@ -227,7 +227,7 @@
 
     <!-- BATTERY ALARM THRESHOLDS -->
     <section class="card">
-        <h2>Battery Alarm (low battery)</h2>
+        <h2>Battery Low Alarm (vibration)</h2>
         <p>The receiver checks the battery voltage and sends an alarm flag to the controller, which vibrates. The pack (10s or 12s) is detected at power-on from the voltage (12s if &gt; 43 V) and the matching thresholds are used. Values are stored in the receiver EEPROM.</p>
         <p>Detected pack: <b id="battPack">...</b></p>
         <h4>10s pack</h4>
@@ -239,12 +239,12 @@
         <p class="setting-note" id="battAlertMsg"></p>
     </section>
 
-    <!-- FIRMWARE UPGRADE -->
+        <!-- FIRMWARE UPGRADE -->
     <section class="card">
         <h2>Firmware upgrade</h2>
-        <p><button class="button" id="upgrade">Upgrade firmware from server</button></p>
+        <p><button class="button" id="upgrade">Upgrade firmware from server (hotspot needed)</button></p>
         <br>
-        <p><button class="button" onclick="window.location.href='/update'">Upgrade firmware from file</button></p>
+        <p><button class="button" onclick="window.location.href='/update'">Upgrade firmware from file (.bin)</button></p>
     </section>
 
     <!-- RIDES DATA FILES -->
@@ -271,7 +271,30 @@
         <p><strong>Free:</strong> <span id="free"></span> bytes</p>
         <hr>
         <h4>Upload file to filesystem</h4>
-        <input type="file" id="fileInput">
+        <div id="dropZone" tabindex="0" style="border:2px dashed #555;border-radius:8px;padding:22px 12px;text-align:center;cursor:pointer;background:#2a2a2a;transition:all .15s">
+            <div style="font-size:1.6rem">&#128194;</div>
+            <div>Drag file here or <u>click to select file</u></div>
+            <div id="fileName" style="margin-top:8px;opacity:0.8">No file selected</div>
+            <input type="file" id="fileInput" style="display:none">
+        </div>
+        <script>
+        (function(){
+            var dz=document.getElementById('dropZone'), inp=document.getElementById('fileInput'), nm=document.getElementById('fileName');
+            function upd(){ nm.textContent = inp.files[0] ? inp.files[0].name + ' (' + inp.files[0].size + ' bytes)' : 'Nessun file selezionato'; }
+            function hl(on){ dz.style.borderColor = on ? '#3b82f6' : '#555'; dz.style.background = on ? '#1e3a5f' : '#2a2a2a'; }
+            dz.addEventListener('click', function(){ inp.click(); });
+            dz.addEventListener('keydown', function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); inp.click(); } });
+            inp.addEventListener('click', function(e){ e.stopPropagation(); });
+            inp.addEventListener('change', upd);
+            ['dragenter','dragover'].forEach(function(t){ dz.addEventListener(t, function(e){ e.preventDefault(); hl(true); }); });
+            ['dragleave','drop'].forEach(function(t){ dz.addEventListener(t, function(e){ e.preventDefault(); hl(false); }); });
+            dz.addEventListener('drop', function(e){
+                if(e.dataTransfer.files && e.dataTransfer.files.length){
+                    var dt=new DataTransfer(); dt.items.add(e.dataTransfer.files[0]); inp.files=dt.files; upd();
+                }
+            });
+        })();
+        </script>
         <br><br>
         <button class="button" onclick="uploadFile()">Upload File</button>
         <br><br>
@@ -329,6 +352,17 @@
         <p class="setting-note" id="thrCurveMsg"></p>
     </section>
 
+        <!-- MEMORY HEALTH -->
+        <section class="card">
+            <h2>Memory health <button id="heapRefreshBtn" style="font-size:0.7rem;padding:2px 8px;background:#334155;color:#e2e8f0;border:1px solid #475569;border-radius:4px;cursor:pointer;vertical-align:middle">Refresh</button></h2>
+            <p style="margin:6px 0 10px 0;font-size:1.5rem;font-weight:700;letter-spacing:1px">
+              <span id="heapBadge" style="color:#94a3b8">...</span>
+            </p>
+            <p style="margin:0 0 4px 0;font-size:0.95rem">Free heap: <b id="heapFree">--</b> KB</p>
+            <p style="margin:0;font-size:0.95rem">Lowest since boot: <b id="heapMin">--</b> KB</p>
+            <p class="setting-note" style="margin:10px 0 0 0">ok at or above 60 KB, WARN between 20 and 60 KB, LOW below 20 KB. The lowest value since boot is the one that predicts allocation failures: if it drops near 20 KB, the firmware is running out of room.</p>
+        </section>
+
     <!-- VESC TOOL -->
     <section class="card">
         <h2>VESC TOOL</h2>
@@ -343,11 +377,36 @@
                 <span style="color:#fca5a5">VESC firmware version is not 6.06. Writing parameters is blocked to prevent damage. Update the VESC firmware before proceeding.</span>
             </div>
         </div>
-        <p>
-          <button class="button" id="vescDumpBtn">1. Dump &amp; Save from VESC</button>
-          <button class="button" id="vescFlashBtn">2. Flash mcconf.bin to VESC</button>
-        </p>
-        <p><button class="button" id="vescReadBtn">Update file values</button></p>
+        <div style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:12px;margin-bottom:12px">
+            <h3 style="margin:0 0 6px 0">Motor programming</h3>
+            <p class="setting-note" style="margin:0 0 12px 0">A file is a saved snapshot of the VESC programming. The VESC is what the motor runs right now. Four steps, in the order you normally use them.</p>
+
+            <p style="margin:0 0 4px 0"><b>1. Selected file</b></p>
+            <p style="margin:0 0 6px 0">
+              <button class="button" id="mcBtn0">BLDC - mcconf.bin</button>
+              <button class="button" id="mcBtn1">FOC - focconf.bin</button>
+            </p>
+            <p style="margin:0 0 14px 0;font-size:0.9rem">
+              Active: <b id="mcActive">...</b><br>
+              mcconf.bin: <b id="mcState0">...</b><br>
+              focconf.bin: <b id="mcState1">...</b>
+            </p>
+
+            <p style="margin:0 0 4px 0"><b>2. Copy the VESC into the selected file</b></p>
+            <p style="margin:0 0 2px 0"><button class="button" id="vescDumpBtn">Dump from VESC into selected file</button></p>
+            <p style="margin:0 0 14px 0;font-size:0.85rem;color:#94a3b8">Saves what the motor is running right now. Overwrites the selected file.</p>
+
+            <p style="margin:0 0 4px 0"><b>3. Copy the selected file into the VESC</b></p>
+            <p style="margin:0 0 2px 0"><button class="button" id="mcProgramBtn">Program VESC with selected file</button></p>
+            <p style="margin:0 0 14px 0;font-size:0.85rem;color:#94a3b8">Overwrites the motor programming. Takes a few seconds, the throttle stays live.</p>
+
+            <p style="margin:0 0 4px 0"><b>4. Check that they match</b></p>
+            <p style="margin:0 0 2px 0"><button class="button" id="mcVerifyBtn">Verify VESC vs selected file</button></p>
+            <p id="mcVerifyMsg" style="margin:4px 0 0 0;font-size:0.9rem"></p>
+            <p style="margin:14px 0 0 0;font-size:0.72rem;color:#64748b">RX build: <span id="mcBuild">unknown</span></p>
+        </div>
+        <p style="margin:16px 0 4px 0"><b>Edit single values (advanced)</b></p>
+        <p><button class="button" id="vescReadBtn">Load values from the selected file</button></p>
         <div id="vescForm">
           <div style="margin:4px 0"><label style="display:inline-block;width:180px">Motor MAX current</label> <input type="number" step="any" id="vf0" style="width:70px;background:#333;color:#0f0;border:1px solid #555;padding:3px;border-radius:3px;text-align:right"> A</div>
           <div style="margin:4px 0"><label style="display:inline-block;width:180px">Battery MAX current</label> <input type="number" step="any" id="vf1" style="width:70px;background:#333;color:#0f0;border:1px solid #555;padding:3px;border-radius:3px;text-align:right"> A</div>
@@ -365,16 +424,223 @@
             <p class="motor-inversion-note">WARNING: Changes propeller spin direction (CW / CCW).<br>Dangerous operation — ensure propeller is free and no one is nearby.</p>
           </div>
         </div>
+		<br>
+		<button class="button" id="vescWriteBtn">Save values &amp; write to VESC</button>
+        <p id="vescMsg"></p>		
 		<!-- BATTERY READ OFFSET (impostato in test.html) -->
         <div style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:12px;margin:12px 0">
             <h3 style="margin:0 0 8px 0">Battery read offset <button id="battOffsetRefreshBtn" style="font-size:0.7rem;padding:2px 8px;background:#334155;color:#e2e8f0;border:1px solid #475569;border-radius:4px;cursor:pointer;vertical-align:middle">Refresh</button></h3>
             <p style="font-size:1.1rem;margin:0 0 8px 0">Offset set in <b>test.html</b>: <b id="battOffsetVal" style="font-size:1.3rem">...</b> V</p>
             <p class="setting-note" style="margin:0">The VESC reads the battery voltage wrong. The board always uses <b>VESC reading + offset</b>, and the low battery alarm threshold is checked on that corrected value. So with a positive offset the real pack voltage at which the alarm fires is the threshold <b>minus</b> the offset (example: 1 V of offset with a 37.2 V threshold means the alarm fires when the pack is really at 36.2 V).</p>
         </div>
-        <br>
-        <button class="button" id="vescWriteBtn">Write to VESC</button>
-        <p id="vescMsg"></p>
+        <!-- CONTROLLER CONFIG PERMISSION -->
+        <div style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:12px;margin:12px 0">
+            <h3 style="margin:0 0 8px 0">Controller config permission</h3>
+            <div style="display:flex;align-items:center;gap:12px">
+                <label class="switch"><input type="checkbox" id="txCfgToggle"><span class="slider"></span></label>
+                <span id="txCfgState" style="font-size:1.05rem">...</span>
+            </div>
+            <p class="setting-note" style="margin:8px 0 0 0">When OFF the receiver ignores to write values to the VESC sent by the controller: the VESC can only be changed from this page. Keep it OFF when you make a reference dump.</p>
+        </div>
     </section>
+
+	
+    <!-- RADIO LINK TIMEOUT -->
+    <section class="card">
+        <h2>Radio link timeout</h2>
+        <p>How long the receiver keeps the last throttle command when the radio link drops, before stopping the motor.
+        <b>Shorter</b> = the motor stops sooner if the controller loses the link, but a short drop-out cuts power.
+        <b>Longer</b> = more tolerant of momentary interference, but slower to stop. Default 1500 ms.</p>
+        <div style="margin:10px 0">
+            <input type="range" id="radioTmoRange" min="500" max="1500" step="100" value="1500" style="width:100%">
+            <p style="margin:6px 0 0 0">Value: <b id="radioTmoVal">1500</b> ms</p>
+        </div>
+        <button class="button" id="radioTmoSave">Save timeout</button>
+        <p id="radioTmoMsg" style="margin-top:8px"></p>
+    </section>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function(){
+        function el(id){ return document.getElementById(id); }
+
+        function loadTxCfg(){
+            fetch('/vescTxCfg', {cache:'no-store'}).then(function(r){ return r.text(); }).then(function(t){
+                var on = (t.trim() === '1');
+                el('txCfgToggle').checked = on;
+                el('txCfgState').textContent = on ? 'ON - the controller can change VESC settings'
+                                                 : 'OFF - values sent by the controller are ignored';
+            }).catch(function(){ el('txCfgState').textContent = 'not available (old firmware?)'; });
+        }
+        el('txCfgToggle').addEventListener('change', function(){
+            var on = el('txCfgToggle').checked ? 1 : 0;
+            fetch('/vescTxCfg?on=' + on, {cache:'no-store'}).then(function(){ loadTxCfg(); })
+                .catch(function(){ el('txCfgState').textContent = 'save error'; });
+        });
+
+        function loadTmo(){
+            fetch('/radioTimeout', {cache:'no-store'}).then(function(r){ return r.text(); }).then(function(t){
+                var v = parseInt(t.trim(), 10);
+                if (isFinite(v)) { el('radioTmoRange').value = v; el('radioTmoVal').textContent = v; }
+            }).catch(function(){});
+        }
+        el('radioTmoRange').addEventListener('input', function(){ el('radioTmoVal').textContent = this.value; });
+        el('radioTmoSave').addEventListener('click', function(){
+            var v = el('radioTmoRange').value;
+            fetch('/radioTimeout?ms=' + v, {cache:'no-store'}).then(function(r){ return r.text(); }).then(function(t){
+                el('radioTmoMsg').textContent = 'Saved: ' + t.trim() + ' ms';
+            }).catch(function(){ el('radioTmoMsg').textContent = 'save error'; });
+        });
+
+        loadTxCfg();
+        loadTmo();
+    });
+    </script>
+
+    <!-- ACCELEROMETER -->
+    <section class="card">
+        <h2>Accelerometer status</h2>
+        <p>On this device the accelerometer sensor is <b id="adxl345"></b></p>
+    </section>
+
+    <!-- ACCELEROMETER AXIS MAPPING -->
+    <section class="card">
+        <h2>Accelerometer axis mapping</h2>
+        <p>If the receiver is mounted in a different position, the accelerometer axes no longer match bow / pitch / roll.
+        Put the board in the three positions below and capture each one: the firmware works out the mapping, checks it
+        and saves it in EEPROM. After the mapping the zero offsets are recalculated from the level position.</p>
+        <p>Current mapping: <b id="axisCurrent">...</b><span id="axisImuState" style="color:#9ca3af"></span></p>
+        <div style="margin:8px 0"><button class="button" id="axisCap1">1. Capture level</button>
+            <span id="axisP1" style="color:#9ca3af;margin-left:10px"></span></div>
+        <div style="margin:8px 0"><button class="button" id="axisCap2">2. Capture nose up (~30&deg;)</button>
+            <span id="axisP2" style="color:#9ca3af;margin-left:10px"></span></div>
+        <div style="margin:8px 0"><button class="button" id="axisCap3">3. Capture right side up (~30&deg;)</button>
+            <span id="axisP3" style="color:#9ca3af;margin-left:10px"></span></div>
+        <br>
+        <button class="button" id="axisApply" disabled>Apply mapping</button>
+        <button class="button" id="axisReset">Restore default</button>
+        <p id="axisMsg" style="margin-top:8px"></p>
+        <p class="setting-note">Keep the board still while a capture runs (~0.5 s).</p>
+    </section>
+	
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+    (function(){
+        var poses = [false, false, false];
+        function el(id){ return document.getElementById(id); }
+        function refresh(){ el('axisApply').disabled = !(poses[0] && poses[1] && poses[2]); }
+
+        // fetch con timeout: senza, un endpoint assente o muto lascia la card in silenzio
+        function jget(url, ms){
+            var ctrl = new AbortController();
+            var t = setTimeout(function(){ ctrl.abort(); }, ms || 4000);
+            return fetch(url, {signal: ctrl.signal, cache: 'no-store'}).then(function(r){
+                clearTimeout(t);
+                return r.text().then(function(body){
+                    if (!r.ok) { throw new Error('HTTP ' + r.status + ' ' + (body || '').substring(0, 60)); }
+                    try { return JSON.parse(body); }
+                    catch (e) { throw new Error('HTTP ' + r.status + ' but not JSON: ' + body.substring(0, 80)); }
+                });
+            }, function(e){ clearTimeout(t); throw e; });
+        }
+
+        function loadAxis(){
+            jget('/axis', 4000).then(function(a){
+                el('axisCurrent').textContent = 'X=' + a.xn + '  Y=' + a.yn + '  Z=' + a.zn + (a.magic ? '  (custom)' : '  (default)');
+                el('axisImuState').textContent = a.connected ? '' : '  - accelerometer not connected';
+            }).catch(function(e){
+                el('axisCurrent').textContent = 'not available (' + e.message + ')';
+                el('axisImuState').textContent = '  - endpoint /axis not reachable: firmware without axis mapping?';
+            });
+        }
+
+        function capture(n){
+            el('axisMsg').textContent = 'Capturing (about 0.5 s): hold the board still...';
+            jget('/axis/pose?n=' + n, 4000).then(function(d){
+                if (!d.ok) { el('axisMsg').textContent = 'not captured: ' + (d.err || ('unexpected reply ' + JSON.stringify(d))); return; }
+                poses[n-1] = true;
+                el('axisP' + n).textContent = '\u2714 ' + d.x.toFixed(2) + ', ' + d.y.toFixed(2) + ', ' + d.z.toFixed(2) + ' g';
+                el('axisMsg').textContent = '';
+                refresh();
+            }).catch(function(e){ el('axisMsg').textContent = 'capture failed: ' + e.message; });
+        }
+
+        el('axisCap1').onclick = function(){ capture(1); };
+        el('axisCap2').onclick = function(){ capture(2); };
+        el('axisCap3').onclick = function(){ capture(3); };
+
+        el('axisApply').onclick = function(){
+            el('axisMsg').textContent = 'Applying...';
+            jget('/axis/apply', 5000).then(function(d){
+                if (d.ok) {
+                    el('axisMsg').textContent = 'Mapping applied: X=' + d.xn + '  Y=' + d.yn + '  Z=' + d.zn;
+                    poses = [false, false, false];
+                    el('axisP1').textContent = ''; el('axisP2').textContent = ''; el('axisP3').textContent = '';
+                    refresh(); loadAxis();
+                } else {
+                    el('axisMsg').textContent = 'Not applied: ' + (d.err || ('unexpected reply ' + JSON.stringify(d)));
+                }
+            }).catch(function(e){ el('axisMsg').textContent = 'apply failed: ' + e.message; });
+        };
+
+        el('axisReset').onclick = function(){
+            jget('/axis/reset', 4000).then(function(){
+                el('axisMsg').textContent = 'Default mapping restored (X=+Y, Y=+Z, Z=+X)';
+                poses = [false, false, false];
+                el('axisP1').textContent = ''; el('axisP2').textContent = ''; el('axisP3').textContent = '';
+                refresh(); loadAxis();
+            }).catch(function(e){ el('axisMsg').textContent = 'reset failed: ' + e.message; });
+        };
+
+        loadAxis();
+    })();
+    });
+    </script>
+
+
+    <!-- BOARD ORIENTATION (live) -->
+    <section class="card">
+        <h2>Board orientation</h2>
+        <p>Live values from the accelerometer, already remapped by the axis mapping above:
+        <b>pitch</b> positive = bow up, <b>roll</b> positive = right side up.</p>
+        <div style="display:flex;gap:40px;margin:10px 0 4px 0">
+            <div>
+                <div style="color:#9ca3af;font-size:0.85rem">Roll</div>
+                <div style="font-size:1.6rem"><span id="expRoll">0</span>&deg;</div>
+            </div>
+            <div>
+                <div style="color:#9ca3af;font-size:0.85rem">Pitch</div>
+                <div style="font-size:1.6rem"><span id="expPitch">0</span>&deg;</div>
+            </div>
+        </div>
+        <p class="setting-note" id="expOrientState"></p>
+        <button class="button" id="expCalib">Calibrate accelerometer offsets</button>
+        <p id="expCalibMsg" style="margin-top:8px"></p>
+        <p class="setting-note">Put the board <b>flat and still</b> before calibrating: the zero offsets are taken from that position.</p>
+    </section>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function(){
+        function el(id){ return document.getElementById(id); }
+        function poll(){
+            fetch('/data', {cache:'no-store'}).then(function(r){ return r.json(); }).then(function(d){
+                var rv = Number(d.roll), pv = Number(d.pitch);
+                if (isFinite(rv)) el('expRoll').textContent = rv.toFixed(1);
+                if (isFinite(pv)) el('expPitch').textContent = pv.toFixed(1);
+                el('expOrientState').textContent = '';
+            }).catch(function(){
+                el('expOrientState').textContent = 'no data from /data (receiver busy or not connected)';
+            });
+        }
+        poll();
+        setInterval(poll, 1000);
+        el('expCalib').onclick = function(){
+            el('expCalibMsg').textContent = 'Calibrating: keep the board level and still...';
+            fetch('/xyzCalib', {cache:'no-store'}).then(function(r){ return r.text(); }).then(function(){
+                setTimeout(function(){ el('expCalibMsg').textContent = 'Calibration done: offsets saved in EEPROM.'; }, 1600);
+            }).catch(function(e){ el('expCalibMsg').textContent = 'calibration failed: ' + e; });
+        };
+    });
+    </script>
 
     <!-- BACK HOME -->
     <section class="card">
@@ -383,12 +649,7 @@
 		<button class="button" onclick="window.location.href='test.html'">Sensors Data Monitor</button>	
     </section>
 	
-    <!-- ACCELEROMETER & REBOOT -->
-    <section class="card">
-        <h2>Accelerometer status</h2>
-        <p>On this device the accelerometer sensor is <b id="adxl345"></b></p>
-    </section>
-
+    <!-- REBOOT -->	
     <section class="card">
         <button class="button" id="reboot">Reboot receiver board</button>
     </section>
@@ -697,7 +958,7 @@
                     }
                 });
             }).catch(function() {
-                document.getElementById('vescMsg').textContent = 'Read failed (no mcconf.bin?)';
+                document.getElementById('vescMsg').textContent = 'Read failed (active config file missing?)';
             });
         }
         loadVescConfig();
@@ -708,20 +969,118 @@
             fetch('/dumpAndSaveVesc').then(r => r.text()).then(t => {
                 document.getElementById('vescMsg').textContent = t;
                 setTimeout(loadVescConfig, 1000);
+                loadMotorConfig();
             }).catch(function() {
                 document.getElementById('vescMsg').textContent = 'Dump failed';
             });
         };
 
-        // Flash mcconf.bin to VESC
-        document.getElementById('vescFlashBtn').onclick = function() {
-            document.getElementById('vescMsg').textContent = 'Flashing to VESC... (reboot in corso)';
-            fetch('/flashMcconf').then(r => r.text()).then(t => {
-                document.getElementById('vescMsg').textContent = t;
-            }).catch(function() {
-                document.getElementById('vescMsg').textContent = 'Flash failed';
+        // Memory health: stato del monitor heap (ok / WARN / LOW).
+        function refreshHeap() {
+            fetch('/heap').then(function (r) { return r.json(); }).then(function (d) {
+                var badge = document.getElementById('heapBadge');
+                badge.textContent = d.state;
+                badge.style.color = (d.state === 'ok') ? '#22c55e'
+                                  : (d.state === 'WARN') ? '#f97316' : '#ef4444';
+                document.getElementById('heapFree').textContent = d.freeK;
+                document.getElementById('heapMin').textContent  = d.minK;
+            }).catch(function () {
+                var badge = document.getElementById('heapBadge');
+                badge.textContent = 'unavailable';
+                badge.style.color = '#94a3b8';
             });
-        };
+        }
+        refreshHeap();
+        setInterval(refreshHeap, 5000);
+        var heapBtn = document.getElementById('heapRefreshBtn');
+        if (heapBtn) { heapBtn.onclick = refreshHeap; }
+
+        // Motor configuration: mcconf.bin / focconf.bin
+        var motorCfgActive = 0, motorCfgPath = '/mcconf.bin', motorCfgOk = false;
+        function mcSizeLabel(f) {
+            if (!f.exists) return 'MISSING';
+            if (f.size === 483) return '483 byte - valid';
+            if (f.size > 483) return f.size + ' byte - old dump with padding, re-Dump to clean it';
+            return f.size + ' byte - incomplete (a valid config is 483 byte)';
+        }
+        function mcSizeColor(f) {
+            if (!f.exists) return '#ef4444';
+            if (f.size === 483) return '#22c55e';
+            return '#f97316';
+        }
+        function renderMotorConfig(d) {
+            motorCfgActive = d.active;
+            motorCfgPath = d.path;
+            motorCfgOk = (motorCfgActive === 0 ? d.mcconf.exists : d.focconf.exists);
+            document.getElementById('mcActive').textContent = motorCfgPath;
+            document.getElementById('mcBuild').textContent = d.build || 'unknown (old firmware)';
+            var s0 = document.getElementById('mcState0');
+            var s1 = document.getElementById('mcState1');
+            s0.textContent = mcSizeLabel(d.mcconf);
+            s0.style.color = mcSizeColor(d.mcconf);
+            s1.textContent = mcSizeLabel(d.focconf);
+            s1.style.color = mcSizeColor(d.focconf);
+            document.getElementById('mcBtn0').style.outline = (motorCfgActive === 0) ? '3px solid #22c55e' : 'none';
+            document.getElementById('mcBtn1').style.outline = (motorCfgActive === 1) ? '3px solid #22c55e' : 'none';
+        }
+        function loadMotorConfig() {
+            fetch('/motorConfig').then(function(r) { return r.json(); })
+                .then(renderMotorConfig).catch(function() {});
+        }
+        function setMotorConfig(idx) {
+            document.getElementById('vescMsg').textContent = 'Selecting preset...';
+            fetch('/motorConfig?set=' + idx).then(function(r) { return r.json(); }).then(function(d) {
+                renderMotorConfig(d);
+                document.getElementById('vescMsg').textContent = motorCfgOk
+                    ? ('Preset selected: ' + motorCfgPath + ' - VESC not touched')
+                    : ('Preset selected: ' + motorCfgPath + ' - MISSING, run a Dump first');
+                document.getElementById('mcVerifyMsg').textContent = '';
+                loadVescConfig();
+            }).catch(function() {
+                document.getElementById('vescMsg').textContent = 'Selection failed';
+            });
+        }
+        function programMotorConfig() {
+            var msg = document.getElementById('vescMsg');
+            if (!motorCfgOk) {
+                msg.textContent = 'BLOCKED: ' + motorCfgPath + ' is missing - run a Dump first.';
+                return;
+            }
+            msg.textContent = 'Programming VESC with ' + motorCfgPath + ' ... (takes a few seconds)';
+            fetch('/motorConfig?program=1').then(function(r) { return r.text(); }).then(function(t) {
+                msg.textContent = t;
+                setTimeout(function() { verifyMotorConfig(); }, 6000);
+            }).catch(function() {
+                msg.textContent = 'Program request failed';
+            });
+        }
+        function verifyMotorConfig() {
+            var el = document.getElementById('mcVerifyMsg');
+            el.style.color = '#e2e8f0';
+            el.textContent = 'Reading the VESC...';
+            fetch('/vescVerify').then(function(r) { return r.json(); }).then(function(d) {
+                if (!d.ok) {
+                    el.textContent = 'Verify failed: ' + (d.error || 'unknown reason') + '.';
+                    el.style.color = '#ef4444';
+                    return;
+                }
+                if (d.match) {
+                    el.textContent = 'VESC matches ' + d.path + ' (' + d.bytes + ' bytes compared).';
+                    el.style.color = '#22c55e';
+                } else {
+                    el.textContent = 'VESC DIFFERS from ' + d.path + ': ' + d.diff + ' of ' + d.bytes + ' bytes are different.';
+                    el.style.color = '#f97316';
+                }
+            }).catch(function() {
+                el.textContent = 'Verify failed.';
+                el.style.color = '#ef4444';
+            });
+        }
+        document.getElementById('mcBtn0').onclick = function() { setMotorConfig(0); };
+        document.getElementById('mcBtn1').onclick = function() { setMotorConfig(1); };
+        document.getElementById('mcProgramBtn').onclick = programMotorConfig;
+        document.getElementById('mcVerifyBtn').onclick = verifyMotorConfig;
+        loadMotorConfig();
 
         // Read (aggiorna dal file su LittleFS)
         document.getElementById('vescReadBtn').onclick = function() {
@@ -776,6 +1135,10 @@
             var ver = verEl.textContent.trim();
             if (ver !== '6.06') {
                 msgEl.textContent = 'BLOCKED: VESC firmware ' + ver + ' - 6.06 required to write parameters.';
+                return;
+            }
+            if (!motorCfgOk) {
+                msgEl.textContent = 'BLOCKED: ' + motorCfgPath + ' is missing - run a Dump first.';
                 return;
             }
             var params = '';

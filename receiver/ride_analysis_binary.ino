@@ -113,7 +113,7 @@ void rideAnalysis(){
     // Verifica che la dimensione sia un multiplo di sizeof(VescRecord)
     size_t fileSize = file.size();
     if (fileSize % sizeof(VescRecord) != 0) {
-        Serial.printf("Attenzione: dimensione file non multipla di %u!\n",
+        DBG("Attenzione: dimensione file non multipla di %u!\n",
                       sizeof(VescRecord));
     }
 
@@ -322,10 +322,10 @@ void rideAnalysisNoADXL()
 
 /*    
     if (count > 0)
-        Serial.printf("File %u | Takeoffs: %u | Sessioni: %u | Best: %u s\n",
+        DBG("File %u | Takeoffs: %u | Sessioni: %u | Best: %u s\n",
                       fileName, takeOff, wave, waveBestTime);
     else
-        Serial.printf("File %u – vuoto\n", fileName);
+        DBG("File %u – vuoto\n", fileName);
 */
 }
 

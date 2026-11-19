@@ -48,6 +48,14 @@ const char* vescFaultName(uint code){
     return NULL;
 }
 
+// Percentuale stimata dalla tensione a riposo, sulla stessa scala dell'avvio
+// (fix 31/10/2026: usata solo come correzione unidirezionale, mai come valore di uscita)
+static int socFromVoltage(float v){
+      int V = (int)(v * 10.0f);
+      int s = map(constrain(V, socEmptyV, socFullV), socEmptyV, socFullV, 0, 99);
+      return constrain(s, 0, 99);
+}
+
 void getVescData(){  // get vesc data every second and store to flash
             // Keep-alive accelerometrico: movimento sulla tavola = ride vivo
             // anche senza throttle (pump & glide oltre 2-3 minuti)
@@ -57,11 +65,12 @@ void getVescData(){  // get vesc data every second and store to flash
             if ((inactivityCounter > timeNoRecord) or (gravityAlarm)){
                 if (recordEnable && firstConnection) {
                     rideToJson();
-                    // Reset statistiche di ride SOLO qui, dopo il salvataggio (fix 10/08/2026:
-                    minVoltage = 50;
-                    maxTemp = 0;
-                    maxCurrent = 0;
-                    maxPower = 0;
+                    // Fix 14/11/2026 (indicazione di Roberto): le statistiche di
+                    // sessione NON si azzerano a fine ride. Un ride corrisponde a una
+                    // batteria nuova, e la sostituzione e' un riavvio: finche' il main
+                    // gira, maxPower/maxCurrent/minVoltage/maxTemp devono restare
+                    // quelli accumulati dall'accensione. Azzerarli qui faceva
+                    // scrivere nel JSON massimi piu' bassi dei picchi gia' nel .bin.
                 }
                 recordEnable = false;
             } 
@@ -160,16 +169,48 @@ void getVescData(){  // get vesc data every second and store to flash
                               }         
                         } 
       ////////////////////////////////////////////////////////////////////////////////////////////
-                        // calc of battery percentage from power consuption wh
-            //          if((batpercentage > 45) and (voltage <= 38) and (watthour < 110) and (power < 100)) {batCapacity = 250 * batCapacity / battFullCapacity;}
-                        if((voltage < 32.5) and (batpercentage > 10) and (power < 200)) {batCapacity = 200 * batCapacity / battFullCapacity;}
+                        // ---- Percentuale batteria (fix 31/10/2026) ----
+                        // 1) energia: si accumulano solo i delta positivi del contatore Wh del VESC,
+                        //    cosi un suo reset non fa piu risalire la percentuale
+                        {
+                              float dWh = watthour - whLastSample;
+                              if (whLastSample >= 0.0f && dWh > 0.0f && dWh < 100.0f) consumedWhAcc += dWh;
+                              whLastSample = watthour;
 
+                              float remainingWh = (float)batCapacity - consumedWhAcc;
+                              if (remainingWh < 0.0f) remainingWh = 0.0f;
+                              int den = (batCapacity > 0) ? (int)batCapacity : 1;
+                              socRaw = (int)lroundf(remainingWh * (float)percentageOfCapacity / (float)den);
+                              socRaw = constrain(socRaw, 0, (int)percentageOfCapacity);
 
-                        float consumedWh = (watthour > whBaseline) ? (watthour - whBaseline) : 0.0f;
-                        batpercentage = (int)(batCapacity - consumedWh);
-                        batpercentage = map(batpercentage, 0, batCapacity, 0, percentageOfCapacity); 
-                        batpercentage = constrain(batpercentage, 0, 99);
-                        if((batpercentage > 15) & (voltage < 33.5) & (power < 200)) {batpercentage = 10;}
+                              // 2) controllo tensione: solo a basso carico sostenuto, e puo SOLO
+                              //    abbassare il tetto della sessione (latch): niente ritorni su
+                              static float vLow = 0;
+                              static unsigned long lowSince = 0;
+                              if (power < 150 && current < 5.0f && voltage > 20.0f) {
+                                    if (lowSince == 0) lowSince = millis();
+                                    vLow = (vLow < 1.0f) ? voltage : (vLow * 0.8f + voltage * 0.2f);
+                                    if (millis() - lowSince > 8000UL) {
+                                          int socV = socFromVoltage(vLow);
+                                          if (socV < socLatch) {
+                                                if (socLatch - socV >= 2) {
+                                                      char socMsg[64];
+                                                      snprintf(socMsg, sizeof(socMsg), "SOC tensione %d%% (era %d%%)", socV, socLatch);
+                                                      logEvent(socMsg);
+                                                }
+                                                socLatch = socV;
+                                          }
+                                    }
+                              } else {
+                                    lowSince = 0;
+                                    vLow = 0;
+                              }
+
+                              // 3) uscita: max 1% al secondo in discesa, mai in salita
+                              int socTarget = (socRaw < socLatch) ? socRaw : socLatch;
+                              if (socTarget < socOut) socOut -= 1;
+                              batpercentage = socOut;
+                        }
                         // values peak calc
                         if(voltage < minVoltage){minVoltage = voltage;}
                         if(tempMosfet > maxTemp){maxTemp = tempMosfet;}
@@ -197,7 +238,7 @@ void getVescData(){  // get vesc data every second and store to flash
                         tempMosfet = 0;
                         current = 0.0;
                         power = 0;
-                        batpercentage = 0;
+                        // fix 31/10/2026: la percentuale NON si azzera, resta l'ultima valida
                         watthour = 0;
                         rpm = 0;
                         // NOTA fix 10/08/2026: minVoltage/maxTemp/maxCurrent/maxPower NON azzerati qui.
@@ -207,7 +248,7 @@ void getVescData(){  // get vesc data every second and store to flash
                         data.tempMosfet = 0;
                         data.current = 0.0;
                         data.power = 0;
-                        data.batt = 0;
+                        data.batt = socOut;   // fix 31/10/2026: non mandare 0%% al controller se il VESC non risponde
                         data.file = fileName;
                         data.powerAverage = 0;
                         data.powerIndex = 0;
@@ -230,6 +271,8 @@ void getVescData(){  // get vesc data every second and store to flash
                   if (voltage > 0.0f && voltage < _thOn)  lowBattFlag = true;
                   else if (voltage > _thOff)              lowBattFlag = false;
                   data.lowBattFlag = lowBattFlag;
+            // Config motore attiva, per allineare il menu del controller
+            data.motorCfg = motorCfgActive ? MOTORCFG_FOC : MOTORCFG_BLDC;
             }
             esp_now_send(broadcastAddress, (uint8_t *) &data, sizeof(data)); 
             data.rideNumber = 0;
@@ -258,6 +301,7 @@ void batStatus(){   // staus of battery at start up
             {
                 VescUartGuard uartGuard(pdMS_TO_TICKS(500));
                 if (uartGuard.ownsLock()) {
+                    while (Serial2.available()) Serial2.read();   // fix 26/10/2026: scarta rumore/byte parziali (boot senza VESC)
                     gotValues = UART.getVescValues();
                     if (gotValues) {
                         voltage = UART.data.inpVoltage + voltageOffset;
@@ -267,7 +311,7 @@ void batStatus(){   // staus of battery at start up
                 }
             }
             if (gotValues) {
-                        Serial.print("Battery Voltage: "); Serial.print(voltage,1);Serial.println("V");
+                        DBGPRINT("Battery Voltage: "); DBGPRINT(voltage,1);DBGLN("V");
                         int emptyV, fullV;
                         uint fullCap;
                         const char* label;
@@ -285,22 +329,34 @@ void batStatus(){   // staus of battery at start up
                         }
                         int V = (int)(voltage * 10);
                         int batConst = constrain(V, emptyV, fullV);
-                        batpercentage = map(batConst, emptyV, fullV, 0, 99);
+                        batpercentage = map(batConst, emptyV, fullV, 0, 100);
                         batpercentage = constrain(batpercentage, 0, 99);
                         percentageOfCapacity = batpercentage;
+                        // fix 31/10/2026: stato della percentuale per la sessione
+                        socEmptyV = emptyV;
+                        socFullV  = fullV;
+                        socLatch  = batpercentage;   // puo solo scendere
+                        socOut    = batpercentage;
+                        socRaw    = batpercentage;
+                        consumedWhAcc = 0.0f;
+                        whLastSample  = whBaseline;
                         // Wh residui stimati dalla % (fullCap = Wh nominali della config)
                         batCapacity = map(batpercentage, 0, 99, 0, (int)fullCap);
                         batCapacity = constrain(batCapacity, 0, (int)fullCap);
-                        Serial.print("Battery Full Capacity: "); Serial.println(fullCap);
+                        DBGPRINT("Battery Full Capacity: "); DBGLN(fullCap);
                         char buf[64];
                         snprintf(buf, sizeof(buf), "Bat %s - %d Wh - %d%%", label, batCapacity, batpercentage);
                         logEvent(buf);
-                        if(batpercentage < 60){logEvent("RESTART??");}
+                        if(batpercentage < 60){
+                              char bootMsg[96];
+                              snprintf(bootMsg, sizeof(bootMsg), "START BATT. LOW %d%% - Restart or bad battery", batpercentage);
+                              logEvent(bootMsg);
+                        }
                         vescReady = true;
                         delay(600);
                         if(batpercentage > 0){return;}
             }else{
-                        Serial.println("NO VESC DATA!");
+                        DBGLN("NO VESC DATA!");
                         batCapacity = 0;
             }
             delay(500);

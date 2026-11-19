@@ -2,7 +2,7 @@ void api(){
 	// Route for root / web page
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(LittleFS, "/index.html", "text/html");
-    Serial.println("Client Connected");
+    DBGLN("Client Connected");
     });
 
     server.onNotFound([](AsyncWebServerRequest *request){
@@ -54,7 +54,7 @@ server.on("/Wmessage", HTTP_GET, [](AsyncWebServerRequest *request){
             inputMessage1 = request->getParam(PARAM_INPUT_1)->value();    
             request->send(200, "text/plain", "BOARD CODE setting to: " + inputMessage1);
             uint16_t codeValue = inputMessage1.toInt();
-            Serial.print("New board code: "); Serial.print(codeValue);
+            DBGPRINT("New board code: "); DBGPRINT(codeValue);
             byte value1 = (codeValue >> 8) & 0xFF;
             byte value2 = codeValue & 0xFF;
             EEPROM.write(1, value2);
@@ -176,11 +176,11 @@ server.on("/Wmessage", HTTP_GET, [](AsyncWebServerRequest *request){
         },[](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
             static File file;  
             if (index == 0) {  // Inizio del caricamento
-                Serial.printf("Upload Start: %s\n", filename.c_str());
+                DBG("Upload Start: %s\n", filename.c_str());
                 LittleFS.remove(("/" + filename).c_str());  // Rimuove il vecchio file
                 file = LittleFS.open(("/" + filename).c_str(), FILE_WRITE);
                 if (!file) {
-                    Serial.println("Error opening file!");
+                    DBGLN("Error opening file!");
                     return;
                 }
             }
@@ -192,9 +192,9 @@ server.on("/Wmessage", HTTP_GET, [](AsyncWebServerRequest *request){
             if (final) {  // Fine del caricamento
                 if (file) {
                     file.close();
-                    Serial.printf("Upload done: %s (%u bytes)\n", filename.c_str(), index + len);
+                    DBG("Upload done: %s (%u bytes)\n", filename.c_str(), index + len);
                 } else {
-                    Serial.println("Errore: file non valido durante la chiusura!");
+                    DBGLN("Errore: file non valido durante la chiusura!");
                 }
             }
         });
@@ -389,20 +389,13 @@ server.on("/Wmessage", HTTP_GET, [](AsyncWebServerRequest *request){
         request->send(200, "application/json", json);
     });  
 
-
-
-
-
-
-
-
     // ── FLASH MCCONF: invia mcconf.bin al VESC (leggendo da LittleFS) ──
     server.on("/flashMcconf", HTTP_GET, [](AsyncWebServerRequest *request) {
         bool ok = flashMcconfToVesc();
         if (ok) {
-            request->send(200, "text/plain", "MCCONF flashed to VESC");
+            request->send(200, "text/plain", String("Flashed to VESC: ") + motorCfgPath);
         } else {
-            request->send(500, "text/plain", "MCCONF flash failed (check serial, file)");
+            request->send(500, "text/plain", String("Flash failed: ") + motorCfgPath + " (check serial, file)");
         }
     });
 
@@ -434,6 +427,13 @@ server.on("/Wmessage", HTTP_GET, [](AsyncWebServerRequest *request){
             request->send(400, "text/plain", "Missing parameters");
             return;
         }
+        // Selettore config: se il file attivo non esiste la scrittura e' bloccata,
+        // cosi' non si sovrascrive il VESC con un preset mai dumpato.
+        if (!motorCfgExists(motorCfgActive)) {
+            request->send(400, "text/plain",
+                String("BLOCKED: ") + motorCfgPath + " is missing - run a Dump first");
+            return;
+        }
         // Ricostruisce la query string dai parametri individuali
         String qs = "";
         for (int i = 0; i < nParams; i++) {
@@ -445,7 +445,7 @@ server.on("/Wmessage", HTTP_GET, [](AsyncWebServerRequest *request){
         if (ok) {
             request->send(200, "text/plain", "OK scritto");
         } else {
-            request->send(500, "text/plain", "FAILED (no mcconf.bin? VESC offline?)");
+            request->send(500, "text/plain", String("FAILED (") + motorCfgPath + "? VESC offline?)");
         }
     });
 
@@ -458,6 +458,95 @@ server.on("/Wmessage", HTTP_GET, [](AsyncWebServerRequest *request){
         }
     });
 
+    server.on("/focconf.bin", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if (LittleFS.exists("/focconf.bin")) {
+            request->send(LittleFS, "/focconf.bin", "application/octet-stream");
+        } else {
+            request->send(404, "text/plain", "focconf.bin not found");
+        }
+    });
+
+    // == MOTOR CONFIG FILE: selettore mcconf.bin / focconf.bin ==
+    // GET /motorConfig          -> stato dei due file + quale e' attivo
+    // GET /motorConfig?set=0|1  -> cambia file attivo (EEPROM 63) e ricarica i valori
+    server.on("/motorConfig", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if (request->hasParam("set")) {
+            int idx = request->getParam("set")->value().toInt();
+            if (idx != 0 && idx != 1) {
+                request->send(400, "text/plain", "set must be 0 (mcconf.bin) or 1 (focconf.bin)");
+                return;
+            }
+            motorCfgSet((uint8_t)idx);
+            loadMcconfFromFile();
+        }
+
+        // Programmazione esplicita del VESC con il file attivo.
+        // Fix 12/11/2026: selezionare il file NON deve piu' scrivere nel VESC
+        // (lo faceva, e la pagina sembrava cambiare la programmazione da sola).
+        if (request->hasParam("program")) {
+            if (!motorCfgExists(motorCfgActive)) {
+                request->send(400, "text/plain",
+                    String("BLOCKED: ") + motorCfgPath + " is missing - run a Dump first");
+                return;
+            }
+            if (vescConfigQueue == nullptr) {
+                request->send(503, "text/plain", "VESC config worker unavailable");
+                return;
+            }
+            VescConfigRequest r = {};
+            r.flags = VESC_CONFIG_MOTOR;
+            r.motor = motorCfgActive;
+            xQueueSend(vescConfigQueue, &r, 0);
+            request->send(200, "text/plain",
+                String("Programming VESC with ") + motorCfgPath + " ...");
+            return;
+        }
+        char j[256];
+        snprintf(j, sizeof(j),
+                 "{\"active\":%d,\"path\":\"%s\",\"build\":\"%s\","
+                 "\"mcconf\":{\"exists\":%s,\"size\":%lu},"
+                 "\"focconf\":{\"exists\":%s,\"size\":%lu}}",
+                 (int)motorCfgActive, motorCfgPath, RX_BUILD,
+                 LittleFS.exists("/mcconf.bin") ? "true" : "false", motorCfgSize(0),
+                 LittleFS.exists("/focconf.bin") ? "true" : "false", motorCfgSize(1));
+        request->send(200, "application/json", j);
+    });
+
+    // Confronta il file attivo con la config realmente presente nel VESC.
+    server.on("/vescVerify", HTTP_GET, [](AsyncWebServerRequest *request) {
+        int bytesRead = 0;
+        int diff = verifyVescAgainstFile(&bytesRead);
+        char j[160];
+        if (diff < 0) {
+            const char *why = "unknown";
+            if (diff == -1) why = "busy (config in use)";
+            else if (diff == -2) why = "no answer from VESC";
+            else if (diff == -3) why = "bad packet length";
+            else if (diff == -4) why = "selected file missing";
+            else if (diff == -5) why = "file or VESC config too short";
+            snprintf(j, sizeof(j), "{\"ok\":false,\"error\":\"%s\"}", why);
+        } else {
+            snprintf(j, sizeof(j),
+                     "{\"ok\":true,\"match\":%s,\"diff\":%d,\"bytes\":%d,\"path\":\"%s\"}",
+                     (diff == 0) ? "true" : "false", diff, bytesRead, motorCfgPath);
+        }
+        request->send(200, "application/json", j);
+    });
+
+    // Stato memoria per la card di expert.html (sola lettura).
+    server.on("/heap", HTTP_GET, [](AsyncWebServerRequest *request) {
+        uint8_t st = heapStateNow();
+        const char* verdict = (st == 0) ? "ok" : (st == 1) ? "WARN" : "LOW";
+        char j[128];
+        snprintf(j, sizeof(j),
+                 "{\"state\":\"%s\",\"free\":%u,\"min\":%u,\"freeK\":%u,\"minK\":%u}",
+                 verdict,
+                 (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap(),
+                 (unsigned)(ESP.getFreeHeap() / 1024UL),
+                 (unsigned)(ESP.getMinFreeHeap() / 1024UL));
+        request->send(200, "application/json", j);
+    });
+
     server.on("/dumpConfig", HTTP_GET,[](AsyncWebServerRequest *request) {
         dumpVescConfiguration();
         request->send(200, "text/plain", "Configuration dumped on Serial");
@@ -468,7 +557,7 @@ server.on("/Wmessage", HTTP_GET, [](AsyncWebServerRequest *request){
         int n = dumpAndSaveVescConfig();
         if (n > 0) {
             request->send(200, "text/plain",
-                "✅ Config dumpata e salvata su /mcconf.bin (" + String(n) + " byte)");
+                String("✅ Config saved to ") + motorCfgPath + " (" + String(n) + " byte)");
         } else {
             request->send(500, "text/plain", "❌ Dump fallito (VESC non risponde?)");
         }
@@ -510,6 +599,104 @@ server.on("/Wmessage", HTTP_GET, [](AsyncWebServerRequest *request){
                     "text/plain",
                     ok ? "OK" : "FAILED");
 });
+
+
+    // ---- Accelerometer axis mapping (03/11/2026) ----
+    // ---- I2C bus scan (03/11/2026) ----
+    server.on("/i2cscan", HTTP_GET, [](AsyncWebServerRequest *request){
+        char buf[420];
+        int n = 0;
+        strcpy(buf, "{\"found\":[");
+        for (uint8_t a = 1; a < 127; a++) {
+            Wire.beginTransmission(a);
+            if (Wire.endTransmission() == 0) {
+                char t[12];
+                snprintf(t, sizeof(t), "%s\"0x%02X\"", n ? "," : "", a);
+                strncat(buf, t, sizeof(buf) - strlen(buf) - 1);
+                n++;
+            }
+        }
+        strncat(buf, "]}", sizeof(buf) - strlen(buf) - 1);
+        request->send(200, "application/json", buf);
+    });
+
+    server.on("/axis/pose", HTTP_GET, [](AsyncWebServerRequest *request){
+        if (!request->hasParam("n")) { request->send(400, "text/plain", "use ?n=1|2|3"); return; }
+        int n = request->getParam("n")->value().toInt();
+        if (n < 1 || n > 3 || !axisCapturePose((uint8_t)n)) {
+            request->send(503, "application/json", "{\"ok\":false,\"err\":\"accelerometer not connected\"}");
+            return;
+        }
+        uint32_t t0 = millis();
+        while (!axisCapDone && (millis() - t0) < 1500) { delay(5); }
+        if (!axisCapDone) {
+            request->send(504, "application/json", "{\"ok\":false,\"err\":\"capture timeout\"}");
+            return;
+        }
+        const float *q = axisPose[n-1];
+        char buf[160];
+        snprintf(buf, sizeof(buf), "{\"ok\":true,\"n\":%d,\"x\":%.3f,\"y\":%.3f,\"z\":%.3f}", n, q[0], q[1], q[2]);
+        request->send(200, "application/json", buf);
+    });
+
+    server.on("/axis/apply", HTTP_GET, [](AsyncWebServerRequest *request){
+        uint8_t m[3];
+        const char *err = NULL;
+        if (!axisComputeMap(m, err)) {
+            char buf[200];
+            snprintf(buf, sizeof(buf), "{\"ok\":false,\"err\":\"%s\"}", err ? err : "invalid poses");
+            request->send(422, "application/json", buf);
+            return;
+        }
+        axisMapSave(m);        // scrive la mappa (senza commit)
+        axisApplyOffsets();    // scrive gli offset (senza commit)
+        EEPROM.commit();       // un solo commit per entrambe
+        char buf[200];
+        snprintf(buf, sizeof(buf), "{\"ok\":true,\"xn\":\"%s\",\"yn\":\"%s\",\"zn\":\"%s\"}",
+                 axisMapName(m[0]), axisMapName(m[1]), axisMapName(m[2]));
+        request->send(200, "application/json", buf);
+    });
+
+    server.on("/axis/reset", HTTP_GET, [](AsyncWebServerRequest *request){
+        axisMapReset();
+        request->send(200, "application/json", "{\"ok\":true,\"default\":true}");
+    });
+
+    server.on("/axis", HTTP_GET, [](AsyncWebServerRequest *request){
+        char buf[180];
+        snprintf(buf, sizeof(buf),
+                 "{\"magic\":%d,\"x\":%u,\"y\":%u,\"z\":%u,\"xn\":\"%s\",\"yn\":\"%s\",\"zn\":\"%s\",\"addr\":%u,\"connected\":%s}",
+                 EEPROM.read(EEPROM_AXIS_MAGIC) == 0xA5 ? 1 : 0,
+                 axisMap[0], axisMap[1], axisMap[2],
+                 axisMapName(axisMap[0]), axisMapName(axisMap[1]), axisMapName(axisMap[2]),
+                 (unsigned)accelAddress,
+                 accelerometerConnected ? "true" : "false");
+        request->send(200, "application/json", buf);
+    });
+
+
+    // ---- Controller config permission (default OFF) ----
+    server.on("/vescTxCfg", HTTP_GET, [](AsyncWebServerRequest *request){
+        if (request->hasParam("on")) {
+            int on = request->getParam("on")->value().toInt() ? 1 : 0;
+            EEPROM.write(EEPROM_TXCFG, (uint8_t)on);
+            EEPROM.commit();
+            vescCfgFromTx = (on == 1);
+        }
+        request->send(200, "text/plain", vescCfgFromTx ? "1" : "0");
+    });
+
+    // ---- Radio link timeout (500..1500 ms, step 100) ----
+    server.on("/radioTimeout", HTTP_GET, [](AsyncWebServerRequest *request){
+        if (request->hasParam("ms")) {
+            int ms = request->getParam("ms")->value().toInt();
+            ms = constrain(((ms + 50) / 100) * 100, 500, 1500);
+            timeoutMax = ms;
+            EEPROM.write(EEPROM_RADIOTMO, (uint8_t)(ms / 100));
+            EEPROM.commit();
+        }
+        request->send(200, "text/plain", String(timeoutMax));
+    });
 
 
 }

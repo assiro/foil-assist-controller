@@ -1,35 +1,35 @@
 void setupMode(){ // UPGRADE FIRMWARE AND WEBSERVER 
     serviceMode = true;
-    Serial.println("SETUP MODE");
+    DBGLN("SETUP MODE");
     WiFi.mode(WIFI_STA); 
     delay(500);
     WiFi.begin(ssidService, passwordService);
   // Wait for connection
   int count = 0;
-  Serial.println("Waiting for Wi-Fi connection");
+  DBGLN("Waiting for Wi-Fi connection");
   while ( count < 40 ) {
       if (WiFi.status() == WL_CONNECTED) {
-          Serial.print("Connected to ");
-          Serial.println(ssidService);
-          Serial.print("IP address: ");
-          Serial.println(WiFi.localIP());
-          Serial.println("Check for upgrade on Web Server...");
+          DBGPRINT("Connected to ");
+          DBGLN(ssidService);
+          DBGPRINT("IP address: ");
+          DBGLN(WiFi.localIP());
+          DBGLN("Check for upgrade on Web Server...");
           String payload;
           WiFiClient client;
           HTTPClient http;
           String serverPath = String(upgradeServer) + "foilAssistUpgrade.php?T=R&V=" + VERSION;
-          Serial.println(serverPath);
+          DBGLN(serverPath);
           http.begin(client, serverPath.c_str());
           int httpResponseCode = http.GET();
           if (httpResponseCode>0) {
-            Serial.print("HTTP Response code: ");
-            Serial.println(httpResponseCode);
+            DBGPRINT("HTTP Response code: ");
+            DBGLN(httpResponseCode);
             payload = http.getString();
 //            Serial.println(payload);
           }
           else {
-            Serial.print("Error code: ");
-            Serial.println(httpResponseCode);
+            DBGPRINT("Error code: ");
+            DBGLN(httpResponseCode);
           }
           http.end();
 //          Serial.println("State setup OFF saved in flash memory");  
@@ -37,21 +37,21 @@ void setupMode(){ // UPGRADE FIRMWARE AND WEBSERVER
           EEPROM.commit();
           if(payload == "true"){
                   downloadFile(); // upgrade files in little fs              
-                  Serial.println("Firmware...");     
+                  DBGLN("Firmware...");     
                   t_httpUpdate_return ret = ESPhttpUpdate.update(String(upgradeServer) + upgradeFile);
                   switch(ret) {
-                      case HTTP_UPDATE_FAILED: Serial.printf("HTTP_UPDATE_FAILD Error (%d): %s", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());break;
-                      case HTTP_UPDATE_NO_UPDATES: Serial.println("HTTP_UPDATE_NO_UPDATES");break;
-                      case HTTP_UPDATE_OK: Serial.println("HTTP_UPDATE_OK");break;
+                      case HTTP_UPDATE_FAILED: DBG("HTTP_UPDATE_FAILD Error (%d): %s", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());break;
+                      case HTTP_UPDATE_NO_UPDATES: DBGLN("HTTP_UPDATE_NO_UPDATES");break;
+                      case HTTP_UPDATE_OK: DBGLN("HTTP_UPDATE_OK");break;
                   } 
           }else{        
-          Serial.println("No available");
+          DBGLN("No available");
           } 
 //          Serial.println("Reboot...");
           ESP.restart();
       }
   delay(500);
-  Serial.print(".");
+  DBGPRINT(".");
   count++;
   }
 //  Serial.println("Setup OFF on flash memory");  
@@ -75,7 +75,7 @@ void downloadFile() {
     for (int i = 0; i < sizeof(filenames) / sizeof(filenames[0]); i++) {
       String url = String(serverBase) + String(filenames[i]);
 //      Serial.print("Downloading: ");
-      Serial.print(String(filenames[i]));
+      DBGPRINT(String(filenames[i]));
       http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
       http.setUserAgent("ESP32Downloader/1.0");
       http.setTimeout(20000);  // 20 secondi
@@ -111,7 +111,7 @@ void downloadFile() {
           delay(1);
         }
         file.close();
-        Serial.printf(" -> Saved OK! (%d byte)\n", total);
+        DBG(" -> Saved OK! (%d byte)\n", total);
       }
 
       http.end();

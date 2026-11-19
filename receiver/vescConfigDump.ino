@@ -30,8 +30,8 @@ int dumpAndSaveVescConfig() {
   if (!configGuard.ownsLock()) return 0;
   VescUartGuard uartGuard;
   if (!uartGuard.ownsLock()) return 0;
-  Serial.println();
-  Serial.println(F("=== VESC DUMP ==="));
+  DBGLN();
+  DBGLN(F("=== VESC DUMP ==="));
 
   // Svuota buffer UART
   while (Serial2.available()) Serial2.read();
@@ -60,11 +60,11 @@ int dumpAndSaveVescConfig() {
   }
 
   if (rxLen == 0) {
-    Serial.println(F("No response from VESC"));
+    DBGLN(F("No response from VESC"));
     return 0;
   }
 
-  Serial.printf("DUMP: received %d bytes\n", rxLen);
+  DBG("DUMP: received %d bytes\n", rxLen);
 
   // ── Estrai mc_configuration dal pacchetto VESC ──
   // Formato: start_byte(1) + len(2) + payload(484) + crc(2) + end(1)
@@ -74,7 +74,7 @@ int dumpAndSaveVescConfig() {
   
   // Verifica che sia un pacchetto valido
   if (rx[0] != 0x03) {
-    Serial.println(F("DUMP: not a long packet (expected 0x03 start)"));
+    DBGLN(F("DUMP: not a long packet (expected 0x03 start)"));
     return 0;
   }
   
@@ -83,11 +83,11 @@ int dumpAndSaveVescConfig() {
   int dataLen = rxLen - dataStart - 3;  // -3 per CRC(2) + end(1)
   
   if (dataLen <= 0) {
-    Serial.println(F("DUMP: invalid data length"));
+    DBGLN(F("DUMP: invalid data length"));
     return 0;
   }
   
-  Serial.printf("DUMP: mc_configuration = %d bytes\n", dataLen);
+  DBG("DUMP: mc_configuration = %d bytes\n", dataLen);
 
   // ── Salva su LittleFS come mcconf.bin ──
   // Crea un buffer da 1024 byte (padding con zero per compatibilita')
@@ -97,18 +97,22 @@ int dumpAndSaveVescConfig() {
   int copyLen = min(dataLen, 1024);
   memcpy(mcconfSave, rx + dataStart, copyLen);
 
-  LittleFS.remove("/mcconf.bin");
-  File f = LittleFS.open("/mcconf.bin", FILE_WRITE);
+  LittleFS.remove(motorCfgPath);
+  File f = LittleFS.open(motorCfgPath, FILE_WRITE);
   if (!f) {
-    Serial.println(F("DUMP: cannot write mcconf.bin"));
+    DBG("DUMP: cannot write %s\n", motorCfgPath);
     return 0;
   }
-  f.write(mcconfSave, 1024);
+  // Fix 12/11/2026: si salvano ESATTAMENTE i byte ricevuti dal VESC.
+  // Prima si scrivevano sempre 1024 byte con padding a zero: il file risultava
+  // da 1024 byte dopo un Dump e da 483 dopo un salvataggio, e la dimensione
+  // mostrata in pagina non significava piu' niente.
+  f.write(mcconfSave, copyLen);
   f.close();
-  Serial.printf("DUMP: saved mcconf.bin (%d + padding 1024 bytes)\n", dataLen);
+  DBG("DUMP: saved %s (%d bytes)\n", motorCfgPath, copyLen);
   invalidateWattMaxCache();   // fix 20/08/2026: il dump riscrive il file, la cache l_watt_max va invalidata
 
-  Serial.println(F("=== DUMP END ==="));
+  DBGLN(F("=== DUMP END ==="));
   return dataLen;
 }
 
@@ -117,8 +121,8 @@ int dumpAndSaveVescConfig() {
 String getVescFirmwareVersion() {
   VescUartGuard uartGuard;
   if (!uartGuard.ownsLock()) return "0.00";
-  Serial.println();
-  Serial.println(F("=== VESC FW VERSION ==="));
+  DBGLN();
+  DBGLN(F("=== VESC FW VERSION ==="));
 
   // Svuota buffer UART
   while (Serial2.available()) Serial2.read();
@@ -148,7 +152,7 @@ String getVescFirmwareVersion() {
   }
 
   if (rxLen < 6) {
-    Serial.println(F("FW VERSION: no response from VESC"));
+    DBGLN(F("FW VERSION: no response from VESC"));
     return "0.00";
   }
 
@@ -166,14 +170,14 @@ String getVescFirmwareVersion() {
     major = rx[4];
     minor = rx[5];
   } else {
-    Serial.println(F("FW VERSION: unknown packet start"));
+    DBGLN(F("FW VERSION: unknown packet start"));
     return "0.00";
   }
 
   char buf[16];
   snprintf(buf, sizeof(buf), "%d.%02d", major, minor);
-  Serial.printf("FW VERSION: %s (major=%d, minor=%d)\n", buf, major, minor);
-  Serial.println(F("=== FW VERSION END ==="));
+  DBG("FW VERSION: %s (major=%d, minor=%d)\n", buf, major, minor);
+  DBGLN(F("=== FW VERSION END ==="));
   return String(buf);
 }
 

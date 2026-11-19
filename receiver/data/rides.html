@@ -8,17 +8,22 @@
 <script src="jquery.js"></script>
 <script src="rideAnalysis.js"></script>
 <style>
-      /* Best foil time row: banda verde */
-      tr.best-wave-row td {
-        background: rgba(34, 197, 94, 0.13) !important;
-        border-bottom: 1px solid rgba(34, 197, 94, 0.35);
-        color: #bbf7d0;
-        font-weight: 600;
+      /* Card del ride con il best foil time globale */
+      .ride-card.best-card {
+        border: 1px solid #22c55e;
+        box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.35);
       }
-      tr.best-wave-row td:first-child {
-        border-left: 3px solid #22c55e;
-      }
-    </style>
+      .ride-card h5 .bestfoil { color: #22c55e; }
+      /* Istogrammi: una serie per metrica, stessa scala orizzontale dei ride */
+      .chart { display: flex; align-items: flex-end; gap: 6px; padding: 6px 2px 0;
+               border-bottom: 1px solid #334155; }
+      .chart .bar-wrap { flex: 1; display: flex; flex-direction: column;
+                         justify-content: flex-end; align-items: center; }
+      .chart .bar { width: 100%; border-radius: 3px 3px 0 0; }
+      .chart .bar-value { font-size: 0.62rem; color: #e2e8f0; }
+      .chart .bar-label { font-size: 0.62rem; color: #94a3b8; margin-top: 4px; }
+      .chart-title { margin: 14px 0 2px; font-size: 0.95rem; color: #cbd5e1; }
+</style>
 <script type="text/javascript">
 
     // ── fmtTime ─────────────────────────────────────────────
@@ -77,84 +82,91 @@
 
     // ── Analisi rides (rimappata) ────────────────────────────
     async function rideAnalysis(map) {
-        const reportBody = document.getElementById("reportBody");
-        reportBody.innerHTML = "<tr><td colspan='4'>Analyzing rides, please wait…</td></tr>";
-
         let hasAdxl = true;
         try {
             const r = await fetch("/checkAdxl");
             if (r.ok) hasAdxl = (await r.text()).trim().toLowerCase() !== "not present";
         } catch (_) {}
 
-        let firstRow = true;
-        let globalBestTime = 0;
-        const rows = []; // accumuliamo prima di inserire, per trovare il best globale
+        const labels = [], takeoffs = [], foils = [], bestSecs = [];
+        let globalBest = 0;
 
         for (let d = 0; d < 10; d++) {
-            const fileIdx  = map[d];
-            const dispNum  = d + 1;
+            const fileIdx = map[d];
+            const dispNum = d + 1;
+            labels.push("R" + dispNum);
             try {
                 const r = await fetchAndAnalyze(fileIdx, hasAdxl);
-                if (firstRow) { reportBody.innerHTML = ""; firstRow = false; }
-
-                const bestSecs = r.waveBestTime || 0;
-                if (bestSecs > globalBestTime) globalBestTime = bestSecs;
-
-                rows.push({ dispNum, fileIdx, r });
-
-                addSummaryRow(`Ride ${dispNum}`, "TakeOffs",      r.takeoffs.length,       fileIdx, "");
-                addSummaryRow(`Ride ${dispNum}`, "Foil sessions", r.foils.length,          fileIdx, "");
-                addSummaryRow(`Ride ${dispNum}`, "Best foil",     fmtTime(bestSecs),       fileIdx, "", bestSecs);
-
+                const nTake = r.takeoffs.length;
+                const nFoil = r.foils.length;
+                const best  = r.waveBestTime || 0;
+                takeoffs.push(nTake);
+                foils.push(nFoil);
+                bestSecs.push(best);
+                if (best > globalBest) globalBest = best;
+                setText("takeoffs" + dispNum, nTake);
+                setText("foils" + dispNum, nFoil);
+                setText("bestFoil" + dispNum, best > 0 ? fmtTime(best) : "--:--");
             } catch (_) {
-                if (firstRow) { reportBody.innerHTML = ""; firstRow = false; }
-                addSummaryRow(`Ride ${dispNum}`, "—", "no file", fileIdx, "");
+                takeoffs.push(0); foils.push(0); bestSecs.push(0);
+                setText("takeoffs" + dispNum, "-");
+                setText("foils" + dispNum, "-");
+                setText("bestFoil" + dispNum, "--:--");
             }
         }
 
-        if (firstRow) {
-            reportBody.innerHTML = "<tr><td colspan='4'>No ride files found.</td></tr>";
-            return;
+        // Le tre metriche hanno unita' diverse (due conteggi e un tempo):
+        // tre istogrammi separati invece di un unico grafico con scale false.
+        renderBars("chartTakeoffs", takeoffs, labels, v => String(v), "#22d3ee");
+        renderBars("chartFoils",    foils,    labels, v => String(v), "#a78bfa");
+        renderBars("chartBest",     bestSecs, labels, v => fmtTime(v), "#22c55e");
+
+        if (globalBest > 0) {
+            bestSecs.forEach(function (v, i) {
+                if (v === globalBest) {
+                    const c = document.getElementById("card" + (i + 1));
+                    if (c) c.classList.add("best-card");
+                }
+            });
         }
-
-        // Evidenzia in verde il rigo col best foil time globale
-        highlightBestRow(globalBestTime);
     }
 
-    // ── Aggiunge una riga alla tabella ───────────────────────
-    // timeVal è usato solo per il confronto del best globale (data-attr)
-    function addSummaryRow(ride, type, value, fileIdx, cls, timeVal) {
-        const tr = document.createElement("tr");
-        if (cls) tr.className = cls;
-        if (timeVal !== undefined) tr.dataset.bestTime = timeVal;
+    function setText(id, v) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = v;
+    }
 
-        [ride, type, value].forEach(v => {
-            const td = document.createElement("td");
-            td.textContent = v !== undefined ? v : "-";
-            tr.appendChild(td);
+    function renderBars(elId, values, labels, fmt, color) {
+        const el = document.getElementById(elId);
+        if (!el) return;
+        el.innerHTML = "";
+        const max = Math.max(1, ...values);
+        const H = 88;   // altezza massima della barra in px
+        values.forEach(function (v, i) {
+            const wrap = document.createElement("div");
+            wrap.className = "bar-wrap";
+
+            const val = document.createElement("div");
+            val.className = "bar-value";
+            val.textContent = v > 0 ? fmt(v) : "";
+
+            const bar = document.createElement("div");
+            bar.className = "bar";
+            bar.style.height = (v > 0 ? Math.max(3, Math.round(v / max * H)) : 0) + "px";
+            bar.style.background = color;
+            bar.title = labels[i] + ": " + (v > 0 ? fmt(v) : "0");
+
+            const lab = document.createElement("div");
+            lab.className = "bar-label";
+            lab.textContent = labels[i];
+
+            wrap.appendChild(val);
+            wrap.appendChild(bar);
+            wrap.appendChild(lab);
+            el.appendChild(wrap);
         });
-
-        const tdLink = document.createElement("td");
-        const a = document.createElement("a");
-        a.href = `ride.html?ride=${fileIdx}`;
-        a.textContent = "View »";
-        tdLink.appendChild(a);
-        tr.appendChild(tdLink);
-
-        document.getElementById("reportBody").appendChild(tr);
     }
 
-    // ── Evidenzia la riga del best foil time globale ─────────
-    function highlightBestRow(globalBest) {
-        if (!globalBest) return;
-        document.querySelectorAll("#reportBody tr[data-best-time]").forEach(tr => {
-            if (parseFloat(tr.dataset.bestTime) === globalBest) {
-                tr.classList.add("best-wave-row");
-            }
-        });
-    }
-
-    // ── Helpers fetch ────────────────────────────────────────
     function fetchData(url, id) {
         const x = new XMLHttpRequest();
         x.onreadystatechange = function () {
@@ -235,9 +247,12 @@
 <!-- RIDES GRID (generata dinamicamente dai dati rimappati) -->
 <section class="ride-container" aria-label="Rides summary">
 <!-- Ride 1 -->
-<article class="ride-card">
+<article class="ride-card" id="card1">
 <h5>Ride Time: <b id="rideTime1">--:--</b></h5>
 <h5>Motoring Time: <b id="motorTime1">--:--</b></h5>
+<h5>Takeoffs: <b id="takeoffs1"></b></h5>
+<h5>Foil sessions: <b id="foils1"></b></h5>
+<h5>Best foil: <b class="bestfoil" id="bestFoil1"></b></h5>
 <h5>Max Power: <b id="maxPower1"></b> W</h5>
 <h5>Min Voltage: <b id="minVoltage1"></b> V</h5>
 <h5>Max Current: <b id="maxCurrent1"></b> A</h5>
@@ -249,9 +264,12 @@
 <button id="btnView1" class="button">View Ride 1</button>
 </article>
 <!-- Ride 2 -->
-<article class="ride-card">
+<article class="ride-card" id="card2">
 <h5>Ride Time: <b id="rideTime2">--:--</b></h5>
 <h5>Motoring Time: <b id="motorTime2">--:--</b></h5>
+<h5>Takeoffs: <b id="takeoffs2"></b></h5>
+<h5>Foil sessions: <b id="foils2"></b></h5>
+<h5>Best foil: <b class="bestfoil" id="bestFoil2"></b></h5>
 <h5>Max Power: <b id="maxPower2"></b> W</h5>
 <h5>Min Voltage: <b id="minVoltage2"></b> V</h5>
 <h5>Max Current: <b id="maxCurrent2"></b> A</h5>
@@ -263,9 +281,12 @@
 <button id="btnView2" class="button">View Ride 2</button>
 </article>
 <!-- Ride 3 -->
-<article class="ride-card">
+<article class="ride-card" id="card3">
 <h5>Ride Time: <b id="rideTime3">--:--</b></h5>
 <h5>Motoring Time: <b id="motorTime3">--:--</b></h5>
+<h5>Takeoffs: <b id="takeoffs3"></b></h5>
+<h5>Foil sessions: <b id="foils3"></b></h5>
+<h5>Best foil: <b class="bestfoil" id="bestFoil3"></b></h5>
 <h5>Max Power: <b id="maxPower3"></b> W</h5>
 <h5>Min Voltage: <b id="minVoltage3"></b> V</h5>
 <h5>Max Current: <b id="maxCurrent3"></b> A</h5>
@@ -277,9 +298,12 @@
 <button id="btnView3" class="button">View Ride 3</button>
 </article>
 <!-- Ride 4 -->
-<article class="ride-card">
+<article class="ride-card" id="card4">
 <h5>Ride Time: <b id="rideTime4">--:--</b></h5>
 <h5>Motoring Time: <b id="motorTime4">--:--</b></h5>
+<h5>Takeoffs: <b id="takeoffs4"></b></h5>
+<h5>Foil sessions: <b id="foils4"></b></h5>
+<h5>Best foil: <b class="bestfoil" id="bestFoil4"></b></h5>
 <h5>Max Power: <b id="maxPower4"></b> W</h5>
 <h5>Min Voltage: <b id="minVoltage4"></b> V</h5>
 <h5>Max Current: <b id="maxCurrent4"></b> A</h5>
@@ -291,9 +315,12 @@
 <button id="btnView4" class="button">View Ride 4</button>
 </article>
 <!-- Ride 5 -->
-<article class="ride-card">
+<article class="ride-card" id="card5">
 <h5>Ride Time: <b id="rideTime5">--:--</b></h5>
 <h5>Motoring Time: <b id="motorTime5">--:--</b></h5>
+<h5>Takeoffs: <b id="takeoffs5"></b></h5>
+<h5>Foil sessions: <b id="foils5"></b></h5>
+<h5>Best foil: <b class="bestfoil" id="bestFoil5"></b></h5>
 <h5>Max Power: <b id="maxPower5"></b> W</h5>
 <h5>Min Voltage: <b id="minVoltage5"></b> V</h5>
 <h5>Max Current: <b id="maxCurrent5"></b> A</h5>
@@ -305,9 +332,12 @@
 <button id="btnView5" class="button">View Ride 5</button>
 </article>
 <!-- Ride 6 -->
-<article class="ride-card">
+<article class="ride-card" id="card6">
 <h5>Ride Time: <b id="rideTime6">--:--</b></h5>
 <h5>Motoring Time: <b id="motorTime6">--:--</b></h5>
+<h5>Takeoffs: <b id="takeoffs6"></b></h5>
+<h5>Foil sessions: <b id="foils6"></b></h5>
+<h5>Best foil: <b class="bestfoil" id="bestFoil6"></b></h5>
 <h5>Max Power: <b id="maxPower6"></b> W</h5>
 <h5>Min Voltage: <b id="minVoltage6"></b> V</h5>
 <h5>Max Current: <b id="maxCurrent6"></b> A</h5>
@@ -319,9 +349,12 @@
 <button id="btnView6" class="button">View Ride 6</button>
 </article>
 <!-- Ride 7 -->
-<article class="ride-card">
+<article class="ride-card" id="card7">
 <h5>Ride Time: <b id="rideTime7">--:--</b></h5>
 <h5>Motoring Time: <b id="motorTime7">--:--</b></h5>
+<h5>Takeoffs: <b id="takeoffs7"></b></h5>
+<h5>Foil sessions: <b id="foils7"></b></h5>
+<h5>Best foil: <b class="bestfoil" id="bestFoil7"></b></h5>
 <h5>Max Power: <b id="maxPower7"></b> W</h5>
 <h5>Min Voltage: <b id="minVoltage7"></b> V</h5>
 <h5>Max Current: <b id="maxCurrent7"></b> A</h5>
@@ -333,9 +366,12 @@
 <button id="btnView7" class="button">View Ride 7</button>
 </article>
 <!-- Ride 8 -->
-<article class="ride-card">
+<article class="ride-card" id="card8">
 <h5>Ride Time: <b id="rideTime8">--:--</b></h5>
 <h5>Motoring Time: <b id="motorTime8">--:--</b></h5>
+<h5>Takeoffs: <b id="takeoffs8"></b></h5>
+<h5>Foil sessions: <b id="foils8"></b></h5>
+<h5>Best foil: <b class="bestfoil" id="bestFoil8"></b></h5>
 <h5>Max Power: <b id="maxPower8"></b> W</h5>
 <h5>Min Voltage: <b id="minVoltage8"></b> V</h5>
 <h5>Max Current: <b id="maxCurrent8"></b> A</h5>
@@ -347,9 +383,12 @@
 <button id="btnView8" class="button">View Ride 8</button>
 </article>
 <!-- Ride 9 -->
-<article class="ride-card">
+<article class="ride-card" id="card9">
 <h5>Ride Time: <b id="rideTime9">--:--</b></h5>
 <h5>Motoring Time: <b id="motorTime9">--:--</b></h5>
+<h5>Takeoffs: <b id="takeoffs9"></b></h5>
+<h5>Foil sessions: <b id="foils9"></b></h5>
+<h5>Best foil: <b class="bestfoil" id="bestFoil9"></b></h5>
 <h5>Max Power: <b id="maxPower9"></b> W</h5>
 <h5>Min Voltage: <b id="minVoltage9"></b> V</h5>
 <h5>Max Current: <b id="maxCurrent9"></b> A</h5>
@@ -361,9 +400,12 @@
 <button id="btnView9" class="button">View Ride 9</button>
 </article>
 <!-- Ride 10 -->
-<article class="ride-card">
+<article class="ride-card" id="card10">
 <h5>Ride Time: <b id="rideTime10">--:--</b></h5>
 <h5>Motoring Time: <b id="motorTime10">--:--</b></h5>
+<h5>Takeoffs: <b id="takeoffs10"></b></h5>
+<h5>Foil sessions: <b id="foils10"></b></h5>
+<h5>Best foil: <b class="bestfoil" id="bestFoil10"></b></h5>
 <h5>Max Power: <b id="maxPower10"></b> W</h5>
 <h5>Min Voltage: <b id="minVoltage10"></b> V</h5>
 <h5>Max Current: <b id="maxCurrent10"></b> A</h5>
@@ -383,23 +425,19 @@
 </p>
 </article>
 </section>
-<!-- ANALYSIS -->
+<!-- RIDES COMPARISON (istogrammi) -->
 <section class="card">
-<h2>Rides analysis</h2>
-<p class="subtitle">Analysis of all stored rides – best foil session highlighted in green.</p>
-<table id="reportTable">
-<thead>
-<tr>
-<th>Ride</th>
-<th>Type</th>
-<th>Count / Time</th>
-<th>Detail</th>
-</tr>
-</thead>
-<tbody id="reportBody">
-<tr><td colspan="4">Loading analysis…</td></tr>
-</tbody>
-</table>
+<h2>Rides comparison</h2>
+<p class="subtitle">Takeoffs, number of foil session with no motor and best foil time, compared across the 10 stored rides.</p>
+
+<h4 class="chart-title">Takeoffs</h4>
+<div class="chart" id="chartTakeoffs"></div>
+
+<h4 class="chart-title">Foil sessions - waves or pumping</h4>
+<div class="chart" id="chartFoils"></div>
+
+<h4 class="chart-title">Best foil time in the ride</h4>
+<div class="chart" id="chartBest"></div>
 </section>
 <!-- RECORD ASSOLUTO -->
 <section class="card">

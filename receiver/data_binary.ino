@@ -106,7 +106,7 @@ void dataFileCreate() {
     file.close();
     itoa(fileName, fileNameChar, 10);   // fix 22/10/2026: /fileNumber deve dare il ride CORRENTE
     snprintf(dataFileName, sizeof(dataFileName), "/vescDat%d.bin", fileName);
-    Serial.print(dataFileName);
+    DBGPRINT(dataFileName);
     writeToFile(dataFileName);             // crea file vuoto
     // fix 22/10/2026: il riepilogo JSON del ciclo precedente con lo stesso indice
     // non deve comparire come riepilogo del ride appena iniziato.

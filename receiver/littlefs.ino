@@ -5,7 +5,7 @@ LITTLEFS FUNCTIONS
 String readFile(String path) {
     File file = LittleFS.open(path);
     if (!file) {
-        Serial.println("Error opening file");
+        DBGLN("Error opening file");
         return "";
     }
     String content;
@@ -29,9 +29,9 @@ void writeToFile(const char * path){
       if (file){
             file.print("");
             file.close(); 
-            Serial.println(" New data file created!");
+            DBGLN(" New data file created!");
       }else{ 
-            Serial.println(" Error opening file");
+            DBGLN(" Error opening file");
       }
 }
 
@@ -43,7 +43,7 @@ void fileNumber(const char * path, int fileNumber){
             file.close(); 
       //      Serial.println("New file number created!");
       }else{ 
-            Serial.println("Error creating file!");
+            DBGLN("Error creating file!");
       }
 }
 
@@ -87,8 +87,8 @@ void readFileNumber(){
     fileName;
     if(file.available()){
             char inChar = file.read();
-            Serial.print("Last file number is: ");
-            Serial.println(inChar);     
+            DBGPRINT("Last file number is: ");
+            DBGLN(inChar);     
             char buf[64];
             snprintf(buf, sizeof(buf), "Ride number %c", inChar);
             logEvent(buf);
@@ -97,6 +97,7 @@ void readFileNumber(){
     file.close();
     itoa(fileName, fileNameChar,10);
 }
+
 
 void readFileMessage(){
   File file = LittleFS.open("/message.txt");
@@ -120,11 +121,11 @@ void readFileMessage(){
   readMessageLine(data.message2);
   readMessageLine(data.message3);
   file.close();
-  Serial.print(data.message1);
-  Serial.print(" ");
-  Serial.print(data.message2);
-  Serial.print(" ");
-  Serial.println(data.message3);  
+  DBGPRINT(data.message1);
+  DBGPRINT(" ");
+  DBGPRINT(data.message2);
+  DBGPRINT(" ");
+  DBGLN(data.message3);  
 }
 
 void readFileRecord(){
@@ -135,14 +136,14 @@ void readFileRecord(){
         int len = file.readBytes(buf, sizeof(buf) - 1);
         buf[len] = '\0';
         record = atoi(buf);
-        Serial.print("RECORD is: ");Serial.print(record);Serial.println("s");
+        DBGPRINT("RECORD is: ");DBGPRINT(record);DBGLN("s");
         file.close();
     } else {
         if(file) file.close();
         // Crea file con record default se non esiste
         record = 10;
         saveRecord(record);
-        Serial.printf("Record file created with default: %ds\n", record);
+        DBG("Record file created with default: %ds\n", record);
     }
 }
 
